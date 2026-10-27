@@ -1,21 +1,14 @@
 /**
  * Threadloom — a session-management bundle for DeepSeek Harness.
  *
- * Host half. The foundation release only validates its config and exports the stable
- * identity used by the Web half. The MVP adds, in this order:
+ * Host half. M1 provides the trash-first delete core as a Host service plus the
+ * `/session-butler` human command. M2 adds the Web management page and its HTTP
+ * bridge; M3 adds agent tools.
  *
- * 1. a `threadloom` Host service (list/detail/trash/restore/purge/cascade) built on
- *    `sessionQuery`, `sessionPersistence`, `storageDomain`, and the optional
- *    `workspaceRegistry` / `sessionTitle` / `subagents` capabilities;
- * 2. a `session-butler/api` prefix route registered with `ctx.webServer` and guarded by
- *    `ctx.connection.requestRejection`, because a published npm plugin cannot add a
- *    Typert `@Remote` namespace to the Web Client;
- * 3. a `/threadloom` human command (`ctx.commands.register`) so the same operations work
- *    without the management page;
- * 4. read-only agent tools (`ctx.tools.register`) for list/detail only.
- *
- * Every registration must happen inside `apply` through `ctx.effect`/`ctx.on` and return
- * its cleanup.
+ * Every registration happens inside `apply` through `ctx.effect`/`ctx.on` and
+ * returns its cleanup. Optional services are probed with `ctx.get` instead of
+ * being injected, because `workspaceRegistry` is absent from headless / ACP
+ * compositions.
  *
  * @module dsh-session-butler
  */
@@ -23,29 +16,71 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 import { Config, type ThreadloomConfig } from './config.js'
+import { createButlerCommand } from './host/command.js'
+import type {
+  AgentsPort,
+  ButlerHostContext,
+  CommandsPort,
+  SessionPersistencePort,
+  SessionQueryPort,
+  SessionsPort,
+  WorkspaceRegistryPort,
+} from './host/ports.js'
+import { SessionButlerService } from './host/service.js'
 import { API_PREFIX, PANEL_ID, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
 
 export { Config, PLUGIN_ID, PLUGIN_ROW_ID, PANEL_ID, API_PREFIX }
 export type { ThreadloomConfig }
+export { SessionButlerService } from './host/service.js'
+export type { TrashListEntry, TrashListResult, TrashResult } from './host/service.js'
+export { ButlerError } from './shared/errors.js'
+export type { ButlerErrorCode } from './shared/errors.js'
 
 /** Cordis plugin name. It must stay equal to the npm package name. */
 export const name = PLUGIN_ID
 
 /**
- * Host services this half requires.
+ * Host services this half cannot work without.
  *
- * Empty for the foundation release. The MVP fills this with the base-bundle services it
- * cannot work without (`sessionQuery`, `sessionPersistence`, `storageDomain`, `commands`,
- * and `tools`), and probes optional services with `ctx.get(...)` instead of injecting
- * them: `workspaceRegistry`/`sessionTitle`/`subagents` are absent from headless profiles.
+ * All five are base-bundle services (audited against the rc.2 release). Optional
+ * capabilities — `workspaceRegistry`, `subagent` enumeration, and the command
+ * registry — are probed in `apply` instead.
  */
-export const inject: string[] = []
+export const inject = ['sessionQuery', 'sessionPersistence', 'sessions', 'agents'] as const
 
-/**
- * Mount the Threadloom Host half.
- * @param ctx - Host context owned by this plugin row.
- * @param config - Validated plugin configuration from the row's `config`.
- */
-export function apply(_ctx: Context, _config: ThreadloomConfig): void {
-  // Intentionally empty in the foundation release; see the module comment for the plan.
+/** Mount the Threadloom Host half. */
+export function apply(ctx: Context, config: ThreadloomConfig): void {
+  const host = ctx as unknown as ButlerHostContext
+  const homePath = host.get<(...segments: string[]) => string>('dshHomePath')
+  const query = host.get<SessionQueryPort>('sessionQuery')
+  const persistence = host.get<SessionPersistencePort>('sessionPersistence')
+  if (homePath === undefined || query === undefined || persistence === undefined) {
+    host.logger?.warn(
+      'dsh-session-butler: required Host services are unavailable; the plugin stays inactive',
+    )
+    return
+  }
+
+  const sessions = host.get<SessionsPort>('sessions')
+  const agents = host.get<AgentsPort>('agents')
+  const workspace = host.get<WorkspaceRegistryPort>('workspaceRegistry')
+  const service = new SessionButlerService({
+    sessionsRoot: homePath('sessions'),
+    trashRoot: homePath('session-butler', 'trash'),
+    query,
+    persistence,
+    retentionDays: config.trashRetentionDays,
+    cascadeSubagents: config.cascadeSubagents,
+    permanentDelete: config.permanentDelete,
+    ...(sessions === undefined ? {} : { sessions }),
+    ...(agents === undefined ? {} : { agents }),
+    ...(workspace === undefined ? {} : { workspace }),
+  })
+
+  host.provide('sessionButler', service)
+
+  const commands = host.get<CommandsPort>('commands')
+  if (commands !== undefined) {
+    host.effect(() => commands.register(createButlerCommand(service)), 'session-butler: command')
+  }
 }

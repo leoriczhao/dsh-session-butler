@@ -3,7 +3,7 @@
 > DeepSeek Harness 的会话管理插件 —— 把散落在各个 workspace 里的会话，织成一张可检索、可整理、可恢复的网。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**foundation（基础包已就绪；能力调研 v2 已完成并经独立复核；MVP 功能开发中）**
+**状态**：**foundation + M1（删除核心已实现：回收站/恢复/永久删除 + `/session-butler` 命令；能力调研 v2 已完成并经独立复核；M2 管理页开发中）**
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
@@ -17,12 +17,13 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | 跨 workspace 统一列表 / 筛选 / 检索 | 🔜 M2（复用 `remote.session.list` + 宿主 standard hooks） |
 | 会话详情（cwd / 轮数 / token / 大小 / preset / 模型 / 血缘） | 🔜 M2 |
 | 改名 / 置顶 / 归档 / 取消归档 | ✅ 复用 DSH 官方 Remote（管理面集中操作） |
-| **删除（回收站优先 + 恢复 + 永久删除）** | 🔜 M1（DSH 无官方 API，插件自建，见决策 D-003） |
-| 子代理级联删除（fork 永不级联） | 🔜 M1 |
-| `/session-butler` 命令、只读 agent 工具、批量操作 | 🔜 M3 |
+| **删除（回收站优先 + 恢复 + 永久删除）** | ✅ M1（Host service + `/session-butler` 命令；Web 管理页 M2） |
+| 子代理级联删除（fork 永不级联） | ✅ M1 |
+| `/session-butler` 命令 | ✅ M1（list / trash / restore / purge） |
+| 只读 agent 工具、批量操作、回收站管理页 | 🔜 M2/M3 |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ M0 已完成 |
 
-> 当前 `0.1.0` 是可安装、可构建、可发布的基础包：Host/Client 双半管线、配置、展示资源、打包校验全部就绪，但**还没有用户功能**。发布门禁见 [`docs/decisions.md`](docs/decisions.md)。
+> 当前 `0.1.0` 的工作区已包含可发布的包骨架与 M1 删除核心；Web 管理页（M2）与工具面（M3）尚未完成，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 23 tests + npm pack 契约）。发布门禁见 [`docs/decisions.md`](docs/decisions.md)。
 
 ## 快速开始（开发）
 

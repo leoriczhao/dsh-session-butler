@@ -11,7 +11,7 @@
 - **整理**：改名、置顶、归档（复用 DSH 已有能力，管理面集中操作）；
 - **删除**：回收站优先——先移入回收站，可恢复；确认后才永久删除，并可选级联删除子代理会话。
 
-> **版本状态（0.1.0）**：当前发布的是可安装、可构建、可发布的**基础包**（Host/Client 双半管线、配置、展示资源、打包校验）。列表/详情/回收站等用户功能按 `docs/decisions.md` 的里程碑落地，发布门禁见该文档。
+> **版本状态（0.1.0）**：M1 已完成——Host 侧删除核心（回收站/恢复/永久删除/子代理级联）与 `/session-butler` 命令可用；Web 管理页（M2）与 agent 工具（M3）尚未完成，因此暂不发布。
 
 ## 安装
 
@@ -28,6 +28,22 @@ dsh plugin --profile <profile> add dsh-session-butler@<version>
 ```bash
 dsh plugin --profile <profile> remove dsh-session-butler
 ```
+
+## 命令（M1）
+
+在任意会话的 composer 中输入：
+
+```
+/session-butler list
+/session-butler trash <session-id> [--cascade|--no-cascade]
+/session-butler restore <session-id>
+/session-butler purge <session-id> <session-id>
+```
+
+- `list`：列出回收站条目（删除时间、保留期是否已到、级联来源）。
+- `trash`：预检通过后移入回收站；运行中会话会先归档停止（D-013），迁移中会话会被拒绝；默认级联子代理会话（fork 永不级联）。
+- `restore`：移回原目录；原路径已被占用时拒绝。
+- `purge`：永久删除，需要配置 `permanentDelete: confirm` 且第二次输入完整 session id。
 
 ## 配置
 

@@ -32,6 +32,7 @@
   - 同时向上游提交 issue/PR 建议：`SessionPersistence.delete()` + `session/deleted` 事件 + 缓存/客户端失效钩子。上游落地后插件切换过去，删除目录的代码删除。
 - **理由**：在无官方 API 的前提下，回收站优先把不可逆操作降到最低；租约探测避免删除其他进程正在写的会话；`kind === 'jsonl'` 判断让存储在重构后安全失败而不是误删。
 - **影响**：插件需要文件系统能力（`node:fs` / `dshHomePath`），需要有 fixture 测试；存储重构时可能失效（有稳定错误码兜底）。
+- **实现备注（M1）**：回收站使用**镜像 sessions 树的目录布局 + 每会话 sidecar JSON 元数据**（原子 temp+rename 写入），暂不引入 `storageDomain`：它要求 zod schema 与额外的运行时依赖，而回收站元数据只由本插件读写；M2 若需要跨进程变更通知/查询再评估迁移到 domain。
 
 ### D-004 级联只沿 `origin === 'subagent'`，fork 永不级联 · accepted
 
@@ -104,21 +105,21 @@
 - **背景**：header 不可变、persistence 以 header 定目录；`workspace.entity.attachSession` 要求 cwd realpath 与 workspace path 一致。真"移动"需要改 header（非法）或重放新建。
 - **决策**：MVP 与二期都不做跨 workspace 移动；若未来需要，先讨论「copy 后旧会话标记迁移」的产品语义并要上游支持。
 
-### D-013 删除运行中会话的默认交互 · proposed
+### D-013 删除运行中会话：先归档停止，再删除 · accepted
 
-- **决策（建议）**：管理页对 running 会话的删除按钮先弹「先停止并归档？」；确认后调用官方 `archiveSession({stopActivity:true})`，再执行 trash。拒绝在运行中直接删。
-- **待确认**：是否允许"强制停止并删除"（需要用户显式二次确认）。
+- **决策（用户 2026-10-27 确认推荐项 A）**：trash 前若会话仍 live，先调用官方 `archiveSession({stopActivity:true})` 并等待运行工作结束（有界轮询）；成功后再执行 trash，最后清理归档/置顶状态。无 workspace 服务的组合（headless/ACP）直接返回 `session-running` 并提示先手动停止。不提供"强制停止并删除"。
+- **实现（M1）**：`SessionButlerService.settleRunning`；失败回滚时对本次归档过的会话 best-effort `unarchive`。
 
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |
 |---|---|---|
-| Q1 | 回收站默认保留期？ | 30 天（`trashRetentionDays=30`），到期仅提示不自动 purge |
-| Q2 | 永久删除是否默认开启？ | 默认 `disabled`，用户在 profile 配置里显式改 `confirm` |
-| Q3 | 归档是否级联子会话？ | 不级联（保持官方语义），UI 提示"子会话仍在列表中" |
-| Q4 | 首版是否接受无内容级检索？ | 接受（D-007），内容检索二期 |
-| Q5 | 是否同时提供 CLI 子命令（`dsh session …`）？ | 二期；首版先做 `/session-butler` 命令 + Web 页 |
-| Q6 | 迁移中（formatStatus=migration-required）的会话删除策略？ | 先 resume 完成迁移再删，或拒绝并提示 |
+| Q1 ✅（已定 2026-10-27） | 回收站默认保留期？ | **30 天（`trashRetentionDays=30`）**；到期仅在列表中标记 `expired`，不自动 purge。 |
+| Q2 ✅（已定 2026-10-27） | 永久删除是否默认开启？ | **默认 `disabled`**；用户在 profile 配置里显式改 `confirm` 后可用，且必须二次输入完整 session id。 |
+| Q3 ✅（已定 2026-10-27） | 归档是否级联子会话？ | **不级联**（保持 DSH 官方语义）；UI 提示"子会话仍在列表中"。 |
+| Q4 ✅（已定 2026-10-27） | 首版是否接受无内容级检索？ | **接受**（D-007）：首版标题 + workspace/时间/preset/状态过滤，内容检索二期。 |
+| Q5 ✅（已定 2026-10-27） | 是否提供 CLI 入口？ | **不做 `dsh` CLI 子命令**（插件无法扩展 dsh CLI）；首版用 `/session-butler` 命令 + Web 管理页；独立 bin 留待二期评估。 |
+| Q6 ✅（已定 2026-10-27） | 迁移中（formatStatus=migration-required）的会话删除策略？ | **拒绝并提示先打开完成迁移**（`session-migration-required`），级联中任一子会话迁移未完成同样整体拒绝。 |
 | Q7 ✅（已定 2026-10-27） | `engines.dsh` 下限要不要从 `>=0.2.1-rc.3` 降到 `>=0.2.1-rc.2`？ | **已定：降到 rc.2。** 审计了 M1–M3 实际用到的 30+ Host/Client API（sessionQuery/persistence/title、workspaceRegistry/attachSession、agents/agentDefaultModel、sessions、commands、tools/defineTool、webServer/connection、storageDomain、dshHomePath、projectionCache；remote.session/workspace、slots、row menu/branch、standard hooks、client module contract、11 platform modules），全部存在于 rc.2 发布包；未使用的 HEAD-only 能力（markdown 导出等）不影响下限。 |
 
 ## 发布门禁（MVP acceptance checklist）

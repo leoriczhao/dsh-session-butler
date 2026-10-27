@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — M1 trash core (Host-side delete, 2026-10-27)
+
+- `SessionButlerService` (exposed as `ctx.sessionButler`): trash-first delete with
+  restore and confirm-gated permanent purge, subagent cascade (`origin ===
+  'subagent'` only), running-session stop via `archiveSession({stopActivity:true})`,
+  cross-process write-lease probe, migration-required refusal, symlink/path safety,
+  and deterministic preflight-before-move with rollback.
+- Trash storage mirrors the sessions tree with atomic sidecar metadata; retention
+  (default 30 days) only marks entries expired, never auto-purges.
+- `/session-butler list|trash|restore|purge` human command.
+- Stable `ButlerError` codes in `src/shared/errors.ts`.
+- Tests: 12 new `node:test` cases (trash/restore/purge gates/cascade/running/locked/
+  migration/conflict/retention/current-session/orphans/command surface); suite now 23.
+- Decisions Q1–Q6 and D-013 resolved as recommended (2026-10-27).
+
 ### Added — foundation (package scaffolding, no user-facing feature yet)
 
 - Publishable DSH plugin package `dsh-session-butler` (display name Threadloom):

@@ -143,6 +143,14 @@ purge(id):   trash 记录存在 → rm -rf trash/<id> → 删除记录（permane
 
 不可变式：**任何一步失败都保持原状或停在上一个可恢复状态**，错误码稳定、可操作。
 
+**M1 实现备注**：
+
+- 目录定位：`SessionLocator` 扫描 `<dshHome>/sessions/<project>/<dir>`，以 session id 为权威（目录名可能与 id 不同前缀），候选名先精确、再试 `session-` 前缀变体；能解压 v4 header 时校验 `header.id`，并拒绝 symlink 逃逸/歧义匹配。
+- 回收站布局：`<dshHome>/session-butler/trash/<project>/<dir>` + 同名 `.json` sidecar（原子写入）；restore 的目标路径由 sidecar 推导，不维护全局索引。
+- 预检顺序：迁移态 → 运行态（D-013 stopActivity + 有界轮询）→ 写租约 → 目录定位 → trash 目的地占用；全部通过后才开始移动，移动失败按逆序回滚。
+- 级联：`sessionQuery.traceSession` 的 descendants 中仅保留 `origin === 'subagent'`；普通 fork（已发布版带 `parentSession`）不级联。
+- 命令面：`/session-butler list|trash|restore|purge`，文本结果；命令不能 trash 发起它的当前会话。
+
 ### 3.4 HTTP 桥（Web → Host 删除能力）
 
 外部 npm 插件无法新增 Typert `@Remote`，因此：
@@ -185,7 +193,7 @@ src/client/bridge.ts       # document-relative fetch 封装（错误码 → 文�
 | **M0（已完成）** | 包脚手架、构建/打包/校验管线、配置、展示资源、三份调研 + 架构/决策/发布文档 | `pnpm run verify` 全绿；`npm pack` 清单闭环 |
 | M1 | Host 删除核心：capabilities/resolve/trash/delete + storageDomain + 单元/集成测试（临时 `DSH_HOME` fixture） | 不接 UI 也能通过临时 profile 命令验证 trash/restore/purge/级联 |
 | M2 | Web 管理页：main panel + sidebar 入口 + bridge 客户端 + 列表/筛选/详情 | 临时 profile 安装后页面可用；危险操作确认/错误码可见 |
-| M3 | 命令 + 只读工具 + 批量操作 + 回收站页面 | 无 UI 场景可用；模型只能读 |
+| M2.5/M3 | 只读 agent 工具（list/detail）+ 批量操作 + 回收站页面 | 无 UI 场景可用；模型只能读 |
 | M4 | 发布验收：`npm pack` → 临时 profile link 安装 → registry 安装复验 | 见 `docs/publishing.md` 阶段 C/E |
 
 ## 6. 兼容与升级策略
