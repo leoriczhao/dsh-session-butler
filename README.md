@@ -3,7 +3,7 @@
 > DeepSeek Harness 的会话管理插件 —— 把散落在各个 workspace 里的会话，织成一张可检索、可整理、可恢复的网。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**foundation（基础包已就绪，MVP 功能开发中）**
+**状态**：**foundation（基础包已就绪；能力调研 v2 已完成并经独立复核；MVP 功能开发中）**
 **兼容**：DSH `>=0.2.1-rc.3 <0.3.0`（顶层 `engines.dsh`）
 
 ---
@@ -68,8 +68,10 @@ dsh --profile tl-dev --dump-config   # 确认出现 session-butler 行
 | [`docs/decisions.md`](docs/decisions.md) | 决策记录（D-001…D-013）+ 待确认问题 + 发布门禁 |
 | [`docs/publishing.md`](docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
 | [`docs/usage.md`](docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
-| [`docs/dsh-host-apis.md`](docs/dsh-host-apis.md) | 调研：Host API 能力矩阵（含删除缺口、存储布局、血缘） |
-| [`docs/dsh-web-ui.md`](docs/dsh-web-ui.md) | 调研：Web 扩展面（slot、hooks、Remote、自定义 Host 桥、bundle 契约） |
+| [`research/dsh-session-management-v2.md`](research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
+| [`research/v2-verification.md`](research/v2-verification.md) | v2 的**独立对抗式复核**：15 条 claim（13 CONFIRMED / 1 WRONG / 1 NEEDS-NUANCE）+ 逐条证据 + 复核限制 |
+| [`docs/dsh-host-apis.md`](docs/dsh-host-apis.md) | ⛔ 第一版调研（已被 v2 取代，仅存档源码索引） |
+| [`docs/dsh-web-ui.md`](docs/dsh-web-ui.md) | ⛔ 第一版调研（已被 v2 取代，仅存档 slot/源码索引） |
 | [`docs/dsh-packaging-contract.md`](docs/dsh-packaging-contract.md) | 调研：npm 打包/安装/校验契约与 25 条坑位 |
 | [`research/codex-session-management.md`](research/codex-session-management.md) | 产品对标：Codex thread 管理 |
 

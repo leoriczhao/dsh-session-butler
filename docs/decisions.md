@@ -8,7 +8,7 @@
 
 ### D-001 范围重定位：不重做 DSH 已有能力 · accepted
 
-- **背景**：产品调研（`research/codex-session-management.md`）写于早期，假设 DSH 缺少改名/置顶/归档。经 0.2.1-rc.3 源码与 live service 核实：rename、pin/unpin、archive/unarchive、fork（UI 文案「分叉会话」）、export 均已有（Host Service + Web Remote + GUI 行菜单）。**注意 fork 的交互缺口**：入口只侧栏会话行「…」菜单/快捷键，对话页内没有；不能自选分叉点；没有 Codex 式 side 旁支——见 D-014。
+- **背景**：产品调研（`research/codex-session-management.md`）写于早期，假设 DSH 缺少改名/置顶/归档。经已发布包与 live service 核实：rename、pin/unpin、archive/unarchive、fork、export 均已有（Host Service + Web Remote + GUI）。fork 的 UI 入口有 3 个（会话页轮末「在新对话中分支」可按完成轮选 `atSeq`、侧栏行菜单、全局快捷键），剩余缺口是 **tool 面**与轮中截断/Esc Esc/`/side`——见 D-014/D-015。
 - **决策**：Threadloom 的 MVP 聚焦 **统一管理页（列表/检索/详情/批量）+ 删除/回收站 + 命令面**；已有能力通过官方 Remote/Host Service 复用，不重写状态机。
 - **影响**：README、`docs/usage.md`、里程碑（M1–M3）按此重排；「归档 = 移动目录」的假设作废。
 
@@ -35,7 +35,7 @@
 
 ### D-004 级联只沿 `origin === 'subagent'`，fork 永不级联 · accepted
 
-- **背景**：DSH 血缘 = `header.parentSession` + `header.origin === 'subagent'`；fork 是独立会话（`isSeeded: true`，不写 parentSession），但历史 fork 可能保留来源 id。
+- **背景**：DSH 血缘 = `header.parentSession` + `header.origin === 'subagent'`。**fork 的版本行为不一致**：已发布 rc 通道（rc.2/rc.3/rc.4）的 fork 都写 `parentSession`；HEAD（2026-10-23 `b096659` 起）改为普通 fork 不带血缘。插件必须在运行时按 `origin` 判定，不能按版本号假设。
 - **决策**：删除/归档级联只处理 `origin === 'subagent'` 且 `parentSession` 链可达的会话；fork 视为独立会话。删除前展示"将删除 N 个派生会话"。
 - **影响**：`lineage.ts` 交叉验证 `subagents.listDescendants` 与 `sessionQuery.traceSession`；测试覆盖「fork 不被级联」。
 
@@ -83,20 +83,21 @@
 
 ### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · proposed
 
-- **背景**：核实 `docs/tool-catalog.md` 与本进程 `Tool` inspect：DSH 没有任何 `session_create` / `session_fork` / `new_session` 工具。`subagent_fork` 只是「带已完成轮次 seed 的子代理委派」，结果回传父会话，不是用户可见/可切换的新会话；`fork` 只存在于 Web Remote `session.fork` 与 Host `ctx.sessions.fork`（live only）。
+- **背景**：核实 `docs/tool-catalog.md` 与本进程 `Tool` inspect：DSH 没有任何 `session_create` / `session_fork` / `new_session` 工具。`subagent_fork` 只是「带已完成轮次 seed 的子代理委派」，结果回传父会话，不是用户可见/可切换的新会话；`fork` 存在于 Web Remote、Host `ctx.sessions.fork`（live only）与 GUI（会话页轮末分支 / 侧栏菜单 / 快捷键），但都不是 tool。
 - **决策（建议）**：Threadloom M3 注册工具：`session_butler_fork`（当前会话，默认最近完成轮，支持 `at_seq`）、`session_butler_new`（继承 cwd/workspace/preset 的空会话）、只读 `session_butler_list` / `session_butler_detail`。新会话必须出现在同 workspace 且可被 UI 切换；返回 child session id。删除等破坏性写操作仍不作为工具（D-003 不变）。
 - **技术路径**：复用 Remote fork 的实现路径（`sessionQuery.observeSession` → `buildForkSeed` → `ctx.agents.create` → `workspace.attachSession`），或 live 场景用 `ctx.sessions.fork` + resume；工具默认只操作调用方当前会话，任意 session id 需显式参数与用户确认。
 - **待确认**：① 是否把「从会话新建会话」作为工具纳入 MVP（M3 还是提前到 M1/M2）；② 语义是 fork（复制历史）还是 new（空会话继承 cwd）还是两者都要；③ 是否允许工具操作非当前会话。
 
-### D-014 会话内「派生/旁支」是真实交互缺口，列为二期候选 · proposed
+### D-014 会话内「派生/旁支」的剩余缺口，列为二期候选 · proposed
 
-- **背景**：DSH 的 fork 能力存在（`session.fork`，UI 文案「分叉会话」：侧栏会话行 hover 的「…」菜单第 3 项；桌面 `Ctrl/Cmd+Alt+F`、Web `Ctrl/Cmd+Shift+F`；命令面板别名 `fork session`），但存在交互级缺口：
-  1. **对话页内没有入口**——必须回到侧栏、hover 会话行点「…」才能分叉，离开当前上下文；
-  2. **不能选分叉点**——Host `session.fork` 支持 `atSeq`（inclusive 截断），但 UI 固定从最近完成的 turn 分叉；
-  3. **没有 Codex 式 `/side` 临时旁支**，也没有「编辑上一条用户消息并从该点分叉」（Esc Esc）的交互；
-  4. **fork 不写 `parentSession`**，所以没有「派生树/血缘」视图（DSH 血缘只认 `origin === 'subagent'`）。
-- **决策（建议）**：Threadloom MVP 不实现 fork（避免与官方功能重叠）；二期评估「管理页里的派生树视图 + 选 turn 分叉」——这些是**读/编排**增量，不重写 fork 语义；`/side` 式临时旁支不承诺（涉及会话生命周期与存储，需上游支持）。
-- **待确认**：用户是否把「从会话中新建会话」视为 Threadloom 的必做项；若是，优先级排在删除/回收站之后还是之前？
+- **背景（经独立复核修正）**：fork 的 GUI 入口齐全——会话页每条**已完成轮**末尾有 branch 图标「在新对话中分支」（`ctx.sessions.fork({atSeq: 该轮 seq})`，**可按完成轮选分叉点**；已发布 `client-ui-chat@0.2.1-rc.3` 与 HEAD 都有），侧栏会话行「…」菜单有「分叉会话」（固定最近完成轮），全局快捷键 desktop `Ctrl/Cmd+Alt+F` / web `Ctrl/Cmd+Shift+F`。**v2 初稿曾错误声称「对话页内无入口、不能选分叉点」，已纠正。**
+- **剩余真实缺口**：
+  1. **agent tool 面没有**「会话→新会话」工具（D-015）；
+  2. 只能从**已完成轮**分叉，不能切在轮中/任意消息；也没有 Codex 式「编辑上一条用户消息并从该点分叉」（Esc Esc）；
+  3. 没有 `/side` 式临时旁支（不落盘、用完即弃）；
+  4. 没有「派生树/血缘」视图：普通 fork 在 HEAD 不写 `parentSession`，在已发布版虽写 parent 但 UI 只把 `origin==='subagent'` 当血缘（HEAD）。
+- **决策（建议）**：Threadloom MVP 不重做 fork；二期评估管理页里的「派生树视图 + 按轮分叉入口（复用官方 atSeq）」；`/side` 不承诺（需要上游会话生命周期支持）。
+- **待确认**：若用户把「从会话中新建会话」视为必做项，优先做 tool 面（`session_butler_fork`），GUI 入口直接用官方。
 
 ### D-012 跨 workspace 移动不做 · accepted
 
@@ -118,6 +119,7 @@
 | Q4 | 首版是否接受无内容级检索？ | 接受（D-007），内容检索二期 |
 | Q5 | 是否同时提供 CLI 子命令（`dsh session …`）？ | 二期；首版先做 `/session-butler` 命令 + Web 页 |
 | Q6 | 迁移中（formatStatus=migration-required）的会话删除策略？ | 先 resume 完成迁移再删，或拒绝并提示 |
+| Q7 | `engines.dsh` 下限要不要从 `>=0.2.1-rc.3` 降到 `>=0.2.1-rc.2`？npm `latest` 是 rc.2，rc.3 不是发布指针 | 发布前按实际用到的 API 在 rc.2 上复核；若兼容则降到 rc.2，否则保留 rc.3 并在 README 说明 |
 
 ## 发布门禁（MVP acceptance checklist）
 

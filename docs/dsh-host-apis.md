@@ -1,5 +1,8 @@
 # DSH Host 侧会话管理 API 调研（Threadloom 基础）
 
+> ⛔ **已被取代（2026-10-27）**：本文是第一版调研，存在两个已确认的问题：① **表面混淆**（把 GUI/Remote/Host API 的「有」当成 agent tool 面的「有」）；② **版本口径混淆**（把 checkout HEAD 行为写成 `0.2.1-rc.3` 发布版事实，例如 fork 的 `parentSession`、`/api/session.markdown`）。
+> 结论以 [`research/dsh-session-management-v2.md`](../research/dsh-session-management-v2.md) 为准；本文仅保留作源码索引。
+
 > 范围：DeepSeek Harness（DSH）Host 进程里所有与会话管理相关的服务、事件、磁盘格式与注册扩展点，回答「列表 / 详情 / 改名 / 置顶 / 归档 / 删除 / fork / 导出 / 级联 / 运行中会话」各自有没有官方 API、缺口在哪、插件该怎么补。
 >
 > 基准运行时：**DSH 0.2.1-rc.3**（`DSH/package.json:3`；本机实际安装 `~/.dsh/profiles/node_modules/@deepseek-ai/dsh/package.json` 也是 `0.2.1-rc.3`）。

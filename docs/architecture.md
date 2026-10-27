@@ -7,7 +7,7 @@
 
 ## 0. TL;DR
 
-1. **不要重做 DSH 已有的能力。** `0.2.1-rc.3` 已经提供 rename、pin/unpin、archive/unarchive、fork（UI 文案「分叉会话」）、export（Host Service + Web Remote + GUI 行菜单都有）。Threadloom 的真正价值是**统一管理面 + 删除/回收站 + 详情/血缘 + 批量操作**；fork 的交互缺口（对话页内入口、自选分叉点、side 旁支）见 D-014。
+1. **不要重做 DSH 已有的能力。** 已发布 rc 通道（rc.2/rc.3/rc.4，抽查一致）与 HEAD 都提供 rename、pin/unpin、archive/unarchive、fork、export（Host Service + Web Remote + GUI 都有）。fork 的 UI 入口有 3 个：会话页已完成轮末尾「在新对话中分支」（传 `atSeq`，可选分叉轮）、侧栏行菜单「分叉会话」、全局快捷键。Threadloom 的真正价值是**统一管理面 + 删除/回收站 + 详情/血缘 + 批量操作**；fork 剩余缺口（tool 面、轮中任意截断、Esc Esc/`/side`）见 D-014/D-015。
 2. **唯一必须自补的 Host 能力是「删除」**：DSH 没有官方删除 API（设计 note 明确"等真实消费者再加"）。插件侧用「回收站优先 + 跨进程写租约 + 目录移动」实现，长期向上游补 `SessionPersistence.delete()`。
 3. **Web 半不能新增 `@Remote` 命名空间**（Typert 构建期生成、客户端命名空间固定）。删除/回收站走 **`ctx.webServer` 前缀路由 + 同源相对 fetch**，这是已发布第三方插件的生产级做法。
 4. **UI 入口 = keyed `main` 面板 + `sidebar.panellist` 行**，与官方 Plugins 页同构；页面通过宿主注入的 standard hooks 拿列表/workspace/权限数据，复用 `ctx.remote.session.*` / `ctx.remote.workspace.*` 完成已有操作。
@@ -24,7 +24,7 @@
 | 改名 | ✅ `sessionTitle.rename`（live）；Web `session.rename`（自动 resume 冷会话） | 复用 Remote |
 | 置顶 / 归档 | ✅ `workspaceRegistry.pin/unpin/archive/unarchive`；归档是**逻辑标记**，文件不动，`stopActivity` 可停运行中工作 | 复用 Remote；不移动文件、不重做状态机 |
 | 删除 | ❌ 无任何官方 API / 命令 / 路由 / 事件 | **自建**：回收站 + 永久删除 + 子代理级联（D-003/D-004/D-005） |
-| fork（分叉会话） | ✅ `session.fork`：以最近完成 turn 为截断点复制历史，生成独立新会话（继承 cwd/preset），**不写 parentSession**；UI 入口仅在侧栏会话行 hover 的「…」菜单（Pin/Rename/…/Archive）与快捷键，**对话页内无入口，也不能自选分叉点** | 复用官方；「对话内分叉 / 选 turn 分叉 / side 旁支」属真实交互缺口，列为二期候选（D-014），不纳入血缘级联 |
+| fork（分叉会话） | ✅ `session.fork`（`atSeq` 截断、冷会话可）；UI 有 3 个入口，其中**会话页每轮末尾的分支按钮可按完成轮选 `atSeq`**；**tool 面没有对应工具**。版本差异：已发布 rc（rc.2/3/4）的 fork 写 `parentSession`，HEAD 不写 | 复用 Remote；工具面缺口见 D-015；剩余交互缺口（轮中截断、Esc Esc、`/side`）见 D-014；级联只按 `origin==='subagent'`（D-004） |
 | 导出 | ✅ `/export`、`/api/session.export`、`/api/session.markdown` | 二期复用 HTTP 路由/格式化函数 |
 | 跨 workspace 移动 | ❌ 实际不可行（header 不可变；`attachSession` 要求 cwd realpath 匹配） | 明确非目标（D-012） |
 | 内容搜索 | 🟡 需要 profile 开启 `session-query-sqlite` 索引 | 可选降级，不默认自建索引 |
@@ -42,7 +42,7 @@ DSH 的工具面（`ctx.tools` → 模型可见工具）里**没有**「从会�
 | `subagent_codex` / `spawn_teammate` / `workflow` / `ralph` | 外部/团队/工作流子会话 | ❌ 都不是用户语义的「新会话」 |
 | （无） | `session_create` / `session_fork` / `new_session` 这类工具**不存在** | — |
 
-`fork` 能力只存在于 **Web Remote `session.fork`**（Client 可调，自动 resume 冷会话）和 **Host `ctx.sessions.fork`（仅 live）**；两者都不是 tool。结论：**工具面上「会话 → 新会话」是空白**，Threadloom 可以补，且与 `subagent_fork` 的委派语义不同（输出应是新的、可切换的平级会话 id）。
+`fork` 能力存在于 **Web Remote `session.fork`**（Client 可调，自动 resume 冷会话）、**Host `ctx.sessions.fork`（仅 live）** 和 **GUI**（会话页轮末分支按钮 / 侧栏菜单 / 快捷键），但都不是 tool。结论：**工具面上「会话 → 新会话」是空白**，Threadloom 可以补，且与 `subagent_fork` 的委派语义不同（输出应是新的、可切换的平级会话 id）。
 
 **Threadloom 的工具规划（建议 M3）**：
 
@@ -53,9 +53,9 @@ DSH 的工具面（`ctx.tools` → 模型可见工具）里**没有**「从会�
 
 ### 1.3 关键约束
 
-- **服务可用性**：`sessionQuery`/`sessionPersistence`/`sessionTitle`/`storageDomain` 属于 base；`workspaceRegistry` 只在 web-app / sdk-app，headless / acp 没有。必须用 `ctx.get(...)` 探测可选能力。
+- **服务可用性**：`sessionQuery`/`sessionPersistence`/`sessionTitle`/`storageDomain` 属于 base；`workspaceRegistry` 在 **R=rc.3 只有 web-app**，HEAD 的 sdk-app 也挂（`89619e67` 之后），headless/acp 没有。必须用 `ctx.get(...)` 探测可选能力。
 - **归档语义**：只写 `~/.dsh/storages/workspace.json` 的 `archivedSessionIds`，文件原地不动；归档会话在 Web 侧不可打开，子代理后代被 `agent/pre-step` 门禁冻结；**不级联标记**子会话。
-- **血缘**：`header.parentSession` + `header.origin === 'subagent'`。fork 是独立会话（`isSeeded: true`，不写 parent），**不能**沿 `parentSession` 级联误删历史 fork。
+- **血缘**：`header.parentSession` + `header.origin === 'subagent'`。**fork 的版本行为不一致**：已发布 rc 通道（rc.2/rc.3/rc.4）的 fork 都写 `parentSession`；HEAD（2026-10-23 提交 `b096659` 起）改为不写。因此级联**只能**按 `origin === 'subagent'`，绝不能按 `parentSession`（否则在已发布版上会误伤 fork）。详见 `research/dsh-session-management-v2.md` §5.3。
 - **无删除事件**：`api-session/removed` 只对 live session dispose 发出，冷会话删除没有任何客户端推送 → 管理页操作后自行刷新。
 - **存储重构期**：`Session` / `SessionPersistence` 有 proposed 的整体重构。插件只走公开 Service、不解析 `session.v4.jsonl.zstd`、不 import 具体实现包；删除前用 `stat().location` 的 kind 判断（`jsonl` 才按目录删，其他形态拒绝）。
 - **兼容判定**：只认顶层 `engines.dsh`；`dsh.engines.dsh` 静默失效。当前声明 `>=0.2.1-rc.3 <0.3.0`。
@@ -211,5 +211,5 @@ src/client/bridge.ts       # document-relative fetch 封装（错误码 → 文�
 
 ## 8. 参考
 
-- 调研：[`dsh-host-apis.md`](./dsh-host-apis.md) · [`dsh-web-ui.md`](./dsh-web-ui.md) · [`dsh-packaging-contract.md`](./dsh-packaging-contract.md) · [`../research/codex-session-management.md`](../research/codex-session-management.md)
+- 调研（**以 v2 为准**）：[`dsh-session-management-v2.md`](../research/dsh-session-management-v2.md) · 打包契约 [`dsh-packaging-contract.md`](./dsh-packaging-contract.md) · 第一版存档 [`dsh-host-apis.md`](./dsh-host-apis.md) / [`dsh-web-ui.md`](./dsh-web-ui.md) · Codex 对标 [`codex-session-management.md`](../research/codex-session-management.md)
 - 决策：[`decisions.md`](./decisions.md) · 发布：[`publishing.md`](./publishing.md) · 用户文档：[`usage.md`](./usage.md)

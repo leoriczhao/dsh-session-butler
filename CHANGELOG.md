@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundled as a DSH classic-script module factory at `lib/client.js`.
 - Verification pipeline: `typecheck`, `build`, `node --test` artifact smoke tests, and
   `scripts/validate-package.mjs` (manifest contract + `npm pack --dry-run` closure).
+- Research v2: `research/dsh-session-management-v2.md` — capability × surface matrix (agent tool / human command / Web Remote / Client UI / Host Service / CLI / storage+HTTP),
+  published-rc-vs-checkout version scoping, third-party plugin availability, and a corrections log for the first-pass research.
+- Independent adversarial verification of v2: `research/v2-verification.md` (15 claims checked; 1 capability-surface error and 1 over-strong claim found and corrected).
 - Design and recon documentation under `docs/`:
   - `dsh-host-apis.md` — verified Host API surface (sessionQuery, persistence, title,
     workspace, subagents, commands, tools) and the delete gap.
