@@ -8,7 +8,7 @@
 
 ### D-001 范围重定位：不重做 DSH 已有能力 · accepted
 
-- **背景**：产品调研（`research/codex-session-management.md`）写于早期，假设 DSH 缺少改名/置顶/归档。经 0.2.1-rc.3 源码与 live service 核实：rename、pin/unpin、archive/unarchive、fork、export 均已有（Host Service + Web Remote + GUI 行菜单）。
+- **背景**：产品调研（`research/codex-session-management.md`）写于早期，假设 DSH 缺少改名/置顶/归档。经 0.2.1-rc.3 源码与 live service 核实：rename、pin/unpin、archive/unarchive、fork（UI 文案「分叉会话」）、export 均已有（Host Service + Web Remote + GUI 行菜单）。**注意 fork 的交互缺口**：入口只侧栏会话行「…」菜单/快捷键，对话页内没有；不能自选分叉点；没有 Codex 式 side 旁支——见 D-014。
 - **决策**：Threadloom 的 MVP 聚焦 **统一管理页（列表/检索/详情/批量）+ 删除/回收站 + 命令面**；已有能力通过官方 Remote/Host Service 复用，不重写状态机。
 - **影响**：README、`docs/usage.md`、里程碑（M1–M3）按此重排；「归档 = 移动目录」的假设作废。
 
@@ -79,6 +79,16 @@
 - **背景**：`evaluatePluginCompatibility` 只读顶层 `engines.dsh`；存在时忽略 dsh peers。`workspaceRegistry` 不在 base。
 - **决策**：顶层 `engines.dsh` 声明 0.2.x 范围；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
 - **影响**：DSH 升级时先跑 verify；发现 API 变化收紧范围而非放宽。
+
+### D-014 会话内「派生/旁支」是真实交互缺口，列为二期候选 · proposed
+
+- **背景**：DSH 的 fork 能力存在（`session.fork`，UI 文案「分叉会话」：侧栏会话行 hover 的「…」菜单第 3 项；桌面 `Ctrl/Cmd+Alt+F`、Web `Ctrl/Cmd+Shift+F`；命令面板别名 `fork session`），但存在交互级缺口：
+  1. **对话页内没有入口**——必须回到侧栏、hover 会话行点「…」才能分叉，离开当前上下文；
+  2. **不能选分叉点**——Host `session.fork` 支持 `atSeq`（inclusive 截断），但 UI 固定从最近完成的 turn 分叉；
+  3. **没有 Codex 式 `/side` 临时旁支**，也没有「编辑上一条用户消息并从该点分叉」（Esc Esc）的交互；
+  4. **fork 不写 `parentSession`**，所以没有「派生树/血缘」视图（DSH 血缘只认 `origin === 'subagent'`）。
+- **决策（建议）**：Threadloom MVP 不实现 fork（避免与官方功能重叠）；二期评估「管理页里的派生树视图 + 选 turn 分叉」——这些是**读/编排**增量，不重写 fork 语义；`/side` 式临时旁支不承诺（涉及会话生命周期与存储，需上游支持）。
+- **待确认**：用户是否把「从会话中新建会话」视为 Threadloom 的必做项；若是，优先级排在删除/回收站之后还是之前？
 
 ### D-012 跨 workspace 移动不做 · accepted
 

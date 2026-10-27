@@ -7,7 +7,7 @@
 
 ## 0. TL;DR
 
-1. **不要重做 DSH 已有的能力。** `0.2.1-rc.3` 已经提供 rename、pin/unpin、archive/unarchive、fork、export（Host Service + Web Remote + GUI 行菜单都有）。Threadloom 的真正价值是**统一管理面 + 删除/回收站 + 详情/血缘 + 批量操作**。
+1. **不要重做 DSH 已有的能力。** `0.2.1-rc.3` 已经提供 rename、pin/unpin、archive/unarchive、fork（UI 文案「分叉会话」）、export（Host Service + Web Remote + GUI 行菜单都有）。Threadloom 的真正价值是**统一管理面 + 删除/回收站 + 详情/血缘 + 批量操作**；fork 的交互缺口（对话页内入口、自选分叉点、side 旁支）见 D-014。
 2. **唯一必须自补的 Host 能力是「删除」**：DSH 没有官方删除 API（设计 note 明确"等真实消费者再加"）。插件侧用「回收站优先 + 跨进程写租约 + 目录移动」实现，长期向上游补 `SessionPersistence.delete()`。
 3. **Web 半不能新增 `@Remote` 命名空间**（Typert 构建期生成、客户端命名空间固定）。删除/回收站走 **`ctx.webServer` 前缀路由 + 同源相对 fetch**，这是已发布第三方插件的生产级做法。
 4. **UI 入口 = keyed `main` 面板 + `sidebar.panellist` 行**，与官方 Plugins 页同构；页面通过宿主注入的 standard hooks 拿列表/workspace/权限数据，复用 `ctx.remote.session.*` / `ctx.remote.workspace.*` 完成已有操作。
@@ -24,7 +24,7 @@
 | 改名 | ✅ `sessionTitle.rename`（live）；Web `session.rename`（自动 resume 冷会话） | 复用 Remote |
 | 置顶 / 归档 | ✅ `workspaceRegistry.pin/unpin/archive/unarchive`；归档是**逻辑标记**，文件不动，`stopActivity` 可停运行中工作 | 复用 Remote；不移动文件、不重做状态机 |
 | 删除 | ❌ 无任何官方 API / 命令 / 路由 / 事件 | **自建**：回收站 + 永久删除 + 子代理级联（D-003/D-004/D-005） |
-| fork | ✅ Web `session.fork`（`atSeq` 截断；fork **不写 parentSession**） | 二期 UI；不纳入血缘级联 |
+| fork（分叉会话） | ✅ `session.fork`：以最近完成 turn 为截断点复制历史，生成独立新会话（继承 cwd/preset），**不写 parentSession**；UI 入口仅在侧栏会话行 hover 的「…」菜单（Pin/Rename/…/Archive）与快捷键，**对话页内无入口，也不能自选分叉点** | 复用官方；「对话内分叉 / 选 turn 分叉 / side 旁支」属真实交互缺口，列为二期候选（D-014），不纳入血缘级联 |
 | 导出 | ✅ `/export`、`/api/session.export`、`/api/session.markdown` | 二期复用 HTTP 路由/格式化函数 |
 | 跨 workspace 移动 | ❌ 实际不可行（header 不可变；`attachSession` 要求 cwd realpath 匹配） | 明确非目标（D-012） |
 | 内容搜索 | 🟡 需要 profile 开启 `session-query-sqlite` 索引 | 可选降级，不默认自建索引 |
