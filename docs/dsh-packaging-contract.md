@@ -18,7 +18,7 @@
 4. **React / React DOM / jsx-runtime 等 11 个 specifier 必须 external**（浏览器模块表 seed），否则双 React 实例必然崩 hooks（`DSH/packages/client/web/src/platform.ts:8-19`、`DSH/packages/client/web/src/seed.ts:26-42`）。
 5. **`files` 决定发布内容、`exports` 决定运行时可解析性**；两者必须把 patch、client bundle、locale、icon、README/detail 全部包住。`files` 对本地 `link:` 安装不过滤，所以**只有 `npm pack` 的产物清单能证明发布后可运行**（`references/host-plugin.md:35`）。
 6. 发布走 npm 最省事：`prepack` 自动构建，用户 `dsh plugin add <name>` / `plugin_manager install_bundle` 装的是预构建产物，不需要 build-script 审批；git 安装才需要 `prepare` + `allowBuilds`（`DSH/docs/user/develop/basic/publish.md:161-186`）。
-7. 我们自己（Threadloom）落点：包名 `dsh-session-butler`、`dsh.bundle.patch: "./cordis.patch.yml"`、`dsh.client: { platform: "web", inject: ["@deepseek-ai/dsh-client-locale"] }`（UI 挂载点确定后再补对应提供方包）、顶层 `engines.dsh: ">=0.2.1-rc.2 <0.3.0"`（后续按 Threadloom API 审计从 rc.3 下调，见 `research/dsh-session-management-v2.md` §5.4）、Host ESM 产物 `lib/index.js` + Client classic-script 产物 `lib/client.js`。
+7. 我们自己（Threadloom）落点：包名 `dsh-session-butler`、`dsh.bundle.patch: "./cordis.patch.yml"`、`dsh.client: { platform: "web", inject: ["@deepseek-ai/dsh-client-locale"] }`（UI 挂载点确定后再补对应提供方包）、顶层 `engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`（后续按 Threadloom API 审计从 rc.3 下调，见 `research/dsh-session-management-v2.md` §5.4）、Host ESM 产物 `lib/index.js` + Client classic-script 产物 `lib/client.js`。
 
 ---
 
@@ -138,8 +138,8 @@ unmet:
 1. **`dsh.engines.dsh` 不会被读**。`DSH/.agents/notes/implemented/architecture/2026-09-10-public-package-manifest.md:25` 明确选择“顶层 `engines.dsh`”。反例：`~/.dsh/profiles/web/node_modules/dsh-claude-style/package.json:39-49` 把 `engines.dsh` 写在 `dsh` 下——该声明实际休眠，该包能通过检查只是因为它的 `@deepseek-ai/dsh-client-ui-primitives: ">=0.1.5-rc.1"` peer 恰好也接受 0.2.1-rc.3。
 2. **所有 `@deepseek-ai/dsh*` peer 都拿“运行中的 DSH 版本”比较**，不是拿那个包自己的版本比较。所以写 `"@deepseek-ai/dsh-client-ui-primitives": "0.2.1-alpha.1"` 这种“按依赖包版本写的精确 peer”会误判。要么写覆盖运行版本的宽范围（如 `>=0.1.5-rc.1`），要么**优先写顶层 `engines.dsh` 让它独占判定**。
 3. **`@deepseek-ai/cordis`、`@deepseek-ai/schemastery`、`react` 等 peer 不参与兼容检查**（名字不以 `@deepseek-ai/dsh` 开头）。它们只影响 npm/pnpm 的 peer 解析。
-4. **prerelease 参与匹配**：`includePrerelease: true` 意味着像 `>=0.2.1-rc.3 <0.3.0` 也能接受 `0.3.0-rc.1`（rc 小于正式 0.3.0）。如果想“只锁 0.2.x”，用 `>=0.2.1-rc.3 <0.3.0-0` 或精确版本。
-5. 当前采用的建议范围：`"engines": { "dsh": ">=0.2.1-rc.2 <0.3.0" }`（按本项目实际用到的 API 在 rc.2 发布包上审计；npm `latest` 是 rc.2）。
+4. **prerelease 参与匹配**：`includePrerelease: true` 意味着 `>=0.2.1-rc.2 <0.3.0` 的范围也会接受 `0.3.0-rc.1`（rc 小于正式 0.3.0）。本项目因此采用 `>=0.2.1-rc.2 <0.3.0-0` 只锁 0.2.x：`0.3.0-0` 是 0.3.0 的最低 prerelease，`0.3.0-rc.1` 会被拒绝。
+5. 当前采用的建议范围：`"engines": { "dsh": ">=0.2.1-rc.2 <0.3.0-0" }`（按本项目实际用到的 API 在 rc.2 发布包上审计；npm `latest` 是 rc.2）。
 6. **检查点**：安装前（本地路径/registry spec 通过 `inspect`/`pnpm view` 读 manifest）、安装后（`index.ts:938-939`）、profile 启动加载 bundle 层时（`app-boot/README.md:52,54`）、版本列表（`index.ts:643-649`）、市场条目（`plugin-market/src/index.ts:512`）。git/tarball spec 只能在安装后判（`plugin-manager/README.md:75`）。
 7. **版本例外（exemption）**：只存在于 profile 的 `compatibility.json`，键是精确 `name@version` → 允许的精确 DSH 版本列表；升级插件或升级 DSH 都不继承。拒绝时可用 `plugin_manager` 的 `list_version_exemptions`/`set_version_exemption`（`acceptRisk: true`）或 CLI `dsh plugin --profile <p> allow-version …`（`plugin-manager/README.md:76-81`、`tools.ts:113-120`）。它不能把缺失/非法声明变合法，也不进市场索引。
 
@@ -198,7 +198,7 @@ unmet:
   ],
   "engines": {
     "node": ">=22.19",
-    "dsh": ">=0.2.1-rc.2 <0.3.0"
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "exports": {
     ".": {
@@ -717,7 +717,7 @@ DSH 没有内置官方市场，用户需要在插件页的 **Discover** 里手�
           "version": "0.1.0",
           "publishTimestamp": 1790000000,
           "source": { "type": "npm" },
-          "engines": { "dsh": ">=0.2.1-rc.2 <0.3.0" }
+          "engines": { "dsh": ">=0.2.1-rc.2 <0.3.0-0" }
         }
       ]
     }
@@ -741,7 +741,7 @@ DSH 没有内置官方市场，用户需要在插件页的 **Discover** 里手�
 > 本机 DSH 为 0.2.1-rc.3；以下命令在项目根目录执行。**不要在 DSH profile 目录里手工 pnpm add/写 manifest**，安装统一走 `dsh plugin` / `plugin_manager`。
 
 ### 阶段 A：构建与自查
-1. 版本 bump：`package.json.version`；`engines.dsh` 覆盖当前运行时（本项目 `>=0.2.1-rc.2 <0.3.0`，下限经 API 审计）；CHANGELOG。
+1. 版本 bump：`package.json.version`；`engines.dsh` 覆盖当前运行时（本项目 `>=0.2.1-rc.2 <0.3.0-0`，下限经 API 审计）；CHANGELOG。
 2. `npm run typecheck`（host + client 两套 tsconfig）。
 3. `npm run build` → 确认 `lib/index.js`（ESM）、`lib/client.js`（classic-script 工厂）、`lib/types/**` 存在。
 4. **人工检查 client 产物头尾**：`window.__ModuleLoader__.load({ id: "dsh-session-butler", factory: (require) => {` … `return module.exports; } });`；确认 React 没有内联。
@@ -815,7 +815,7 @@ DSH 没有内置官方市场，用户需要在插件页的 **Discover** 里手�
 - **Host 半**：`inject = ['tools', 'commands', 'sessionQuery', …]`（以 task-1 的结论为准）；agent tools 走 `ctx.tools.register`，slash 命令走 `ctx.commands.register`；所有资源在 `apply` 内用 `ctx.effect`/`ctx.on` 注册并返回 cleanup。
 - **Client 半**：React 组件全部用 baseline 依赖（`react`、`ui-slots`、`ui-primitives`）；通过 `ctx.slots.inject/register` 扩展；文案走 locale 服务与 `locale/*.json` 双层（Client 字典 + 包展示 meta）。
 - **发布节奏**：先用绝对路径 link 到临时 profile 做端到端验证（阶段 C）→ `npm pack` 校验文件闭环 → 临时 profile 从 tarball 安装 → 最后 `npm publish`（阶段 D/E）。
-- **兼容策略**：`engines.dsh: ">=0.2.1-rc.2 <0.3.0"`（按本项目实际 API 审计；若后续引入 rc.3/HEAD-only API——例如 markdown 导出——再收紧并在 README 说明）；升级 DSH 后按 §2.3 重新评估，必要时收紧范围而不是依赖 exemption。
+- **兼容策略**：`engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`（按本项目实际 API 审计；若后续引入 rc.3/HEAD-only API——例如 markdown 导出——再收紧并在 README 说明）；升级 DSH 后按 §2.3 重新评估，必要时收紧范围而不是依赖 exemption。
 
 ---
 
