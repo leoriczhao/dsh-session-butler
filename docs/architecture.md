@@ -30,7 +30,28 @@
 | 内容搜索 | 🟡 需要 profile 开启 `session-query-sqlite` 索引 | 可选降级，不默认自建索引 |
 | 运行中会话 | 🟡 归档支持 `stopActivity`；删除无 | 拒绝直接删除，先归档再删（D-005） |
 
-### 1.2 关键约束
+### 1.2 工具面（agent tools）现状
+
+DSH 的工具面（`ctx.tools` → 模型可见工具）里**没有**「从会话创建会话」的工具。逐个核实 `docs/tool-catalog.md` + 当前进程 `Tool` inspect 结果：
+
+| 工具 | 实际语义 | 能否当「从会话新建会话」用 |
+|---|---|---|
+| `session_search` / `session_trace` / `session_event_*`（`@deepseek-ai/dsh-tool-session-query`，opt-in） | 只读检索/追踪 | ❌ 只读 |
+| `subagent`（spawn 后端） | 委派一个干净子代理会话 | ❌ 空会话，不是从会话派生 |
+| `subagent_fork`（alias，`@deepseek-ai/dsh-subagent-fork-in-process`） | 委派一个子代理会话，seed = 父会话**已完成轮次**的快照（不含当前进行中轮） | ⚠️ 机制最接近，但它是**子代理委派**：结果回传给父会话，不是用户可见/可切换的平级会话 |
+| `subagent_codex` / `spawn_teammate` / `workflow` / `ralph` | 外部/团队/工作流子会话 | ❌ 都不是用户语义的「新会话」 |
+| （无） | `session_create` / `session_fork` / `new_session` 这类工具**不存在** | — |
+
+`fork` 能力只存在于 **Web Remote `session.fork`**（Client 可调，自动 resume 冷会话）和 **Host `ctx.sessions.fork`（仅 live）**；两者都不是 tool。结论：**工具面上「会话 → 新会话」是空白**，Threadloom 可以补，且与 `subagent_fork` 的委派语义不同（输出应是新的、可切换的平级会话 id）。
+
+**Threadloom 的工具规划（建议 M3）**：
+
+- 只读：`session_butler_list`（含过滤）、`session_butler_detail`；
+- 创建/派生：`session_butler_fork`（默认对**当前** live 会话、最近完成轮分叉；可选 `at_seq` 指定截断点；返回新 session id 并 attach 到同 workspace）、`session_butler_new`（按当前会话的 cwd/workspace/preset 新建空会话）；
+- 删除类写操作仍**不**作为工具暴露（D-003），只走管理页/命令面；
+- 冷会话（任意 id）的 fork 需要复用 Remote 的路径（`sessionQuery.observeSession` → `buildForkSeed` → `ctx.agents.create` → `workspace.attachSession`），默认只允许当前会话，跨会话操作需显式参数 + 用户确认。
+
+### 1.3 关键约束
 
 - **服务可用性**：`sessionQuery`/`sessionPersistence`/`sessionTitle`/`storageDomain` 属于 base；`workspaceRegistry` 只在 web-app / sdk-app，headless / acp 没有。必须用 `ctx.get(...)` 探测可选能力。
 - **归档语义**：只写 `~/.dsh/storages/workspace.json` 的 `archivedSessionIds`，文件原地不动；归档会话在 Web 侧不可打开，子代理后代被 `agent/pre-step` 门禁冻结；**不级联标记**子会话。

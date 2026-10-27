@@ -28,6 +28,7 @@
   - M1 在插件侧实现：`sessionQuery` 定位 → 路径/kind 校验 → `sessionPersistence.open(id,'write')` 跨进程写租约探测 → 同盘 `rename` 到 `~/.dsh/session-butler/trash/<id>/` → `storageDomain` 记录 → 清理 pin/archive 状态。
   - 回收站目录与索引由插件自持；保留期由 `trashRetentionDays` 控制（默认 30 天，`0` = 不自动清理）。
   - 永久删除（purge）需要回收站记录 + 完整 session id 确认；`permanentDelete` 默认 `disabled`。
+  - 范围澄清：D-003 的「写操作不进工具面」只约束**删除/清除**；创建/分叉会话（非破坏性）可作为工具暴露，见 D-015。
   - 同时向上游提交 issue/PR 建议：`SessionPersistence.delete()` + `session/deleted` 事件 + 缓存/客户端失效钩子。上游落地后插件切换过去，删除目录的代码删除。
 - **理由**：在无官方 API 的前提下，回收站优先把不可逆操作降到最低；租约探测避免删除其他进程正在写的会话；`kind === 'jsonl'` 判断让存储在重构后安全失败而不是误删。
 - **影响**：插件需要文件系统能力（`node:fs` / `dshHomePath`），需要有 fixture 测试；存储重构时可能失效（有稳定错误码兜底）。
@@ -79,6 +80,13 @@
 - **背景**：`evaluatePluginCompatibility` 只读顶层 `engines.dsh`；存在时忽略 dsh peers。`workspaceRegistry` 不在 base。
 - **决策**：顶层 `engines.dsh` 声明 0.2.x 范围；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
 - **影响**：DSH 升级时先跑 verify；发现 API 变化收紧范围而非放宽。
+
+### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · proposed
+
+- **背景**：核实 `docs/tool-catalog.md` 与本进程 `Tool` inspect：DSH 没有任何 `session_create` / `session_fork` / `new_session` 工具。`subagent_fork` 只是「带已完成轮次 seed 的子代理委派」，结果回传父会话，不是用户可见/可切换的新会话；`fork` 只存在于 Web Remote `session.fork` 与 Host `ctx.sessions.fork`（live only）。
+- **决策（建议）**：Threadloom M3 注册工具：`session_butler_fork`（当前会话，默认最近完成轮，支持 `at_seq`）、`session_butler_new`（继承 cwd/workspace/preset 的空会话）、只读 `session_butler_list` / `session_butler_detail`。新会话必须出现在同 workspace 且可被 UI 切换；返回 child session id。删除等破坏性写操作仍不作为工具（D-003 不变）。
+- **技术路径**：复用 Remote fork 的实现路径（`sessionQuery.observeSession` → `buildForkSeed` → `ctx.agents.create` → `workspace.attachSession`），或 live 场景用 `ctx.sessions.fork` + resume；工具默认只操作调用方当前会话，任意 session id 需显式参数与用户确认。
+- **待确认**：① 是否把「从会话新建会话」作为工具纳入 MVP（M3 还是提前到 M1/M2）；② 语义是 fork（复制历史）还是 new（空会话继承 cwd）还是两者都要；③ 是否允许工具操作非当前会话。
 
 ### D-014 会话内「派生/旁支」是真实交互缺口，列为二期候选 · proposed
 
