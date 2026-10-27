@@ -1,0 +1,95 @@
+{
+  "name": "dsh-session-butler",
+  "version": "0.1.0",
+  "description": "Session management for DeepSeek Harness: browse, search, inspect, and trash sessions across workspaces.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "icon": "icon.svg",
+  "license": "MIT",
+  "author": "Threadloom contributors",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "cordis",
+    "session",
+    "session-management",
+    "threadloom"
+  ],
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/usage.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/schemastery": "^3.18.5"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "@types/node": "^24.19.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "semver": "^7.7.2",
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.1"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "build": "npm run build:host && npm run build:client",
+    "build:host": "tsc -p tsconfig.host.json",
+    "build:client": "node scripts/build-client.mjs",
+    "test": "node --test",
+    "validate:package": "node scripts/validate-package.mjs",
+    "verify": "npm run typecheck && npm run clean && npm run build && npm test && npm run validate:package",
+    "prepack": "npm run typecheck && npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

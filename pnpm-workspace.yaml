@@ -1,0 +1,6 @@
+packages:
+  - .
+
+# esbuild needs its platform binary linked by its install script.
+allowBuilds:
+  esbuild: true

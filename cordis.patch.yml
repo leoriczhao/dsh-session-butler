@@ -1,0 +1,11 @@
+# Threadloom (dsh-session-butler) — the profile layer inserted when this bundle is enabled.
+#
+# The row `name` must stay the bare package name. DSH discovers the Web Client half by
+# scanning `dsh.client` on packages named by a patch row; a subpath row would keep the Host
+# half running while the Client half is never loaded.
+#
+# Row ids are loader-wide unique. Keep the id stable across releases: users' profile
+# patches target it by id, and changing it silently drops their overrides.
+- insert:
+    - id: session-butler
+      name: dsh-session-butler

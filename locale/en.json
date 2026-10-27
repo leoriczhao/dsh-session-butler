@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Threadloom",
+    "description": "Session management for DeepSeek Harness: browse, search, inspect, and trash sessions across workspaces.",
+    "detail": "docs/usage.md"
+  }
+}

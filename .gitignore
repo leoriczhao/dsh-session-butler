@@ -1,0 +1,13 @@
+# Build output (published, but not committed)
+lib/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Packed artifacts
+*.tgz
+
+# Logs and editor noise
+*.log
+.DS_Store
