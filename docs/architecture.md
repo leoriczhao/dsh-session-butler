@@ -58,7 +58,7 @@ DSH 的工具面（`ctx.tools` → 模型可见工具）里**没有**「从会�
 - **血缘**：`header.parentSession` + `header.origin === 'subagent'`。**fork 的版本行为不一致**：已发布 rc 通道（rc.2/rc.3/rc.4）的 fork 都写 `parentSession`；HEAD（2026-10-23 提交 `b096659` 起）改为不写。因此级联**只能**按 `origin === 'subagent'`，绝不能按 `parentSession`（否则在已发布版上会误伤 fork）。详见 `research/dsh-session-management-v2.md` §5.3。
 - **无删除事件**：`api-session/removed` 只对 live session dispose 发出，冷会话删除没有任何客户端推送 → 管理页操作后自行刷新。
 - **存储重构期**：`Session` / `SessionPersistence` 有 proposed 的整体重构。插件只走公开 Service、不解析 `session.v4.jsonl.zstd`、不 import 具体实现包；删除前用 `stat().location` 的 kind 判断（`jsonl` 才按目录删，其他形态拒绝）。
-- **兼容判定**：只认顶层 `engines.dsh`；`dsh.engines.dsh` 静默失效。当前声明 `>=0.2.1-rc.3 <0.3.0`。
+- **兼容判定**：只认顶层 `engines.dsh`；`dsh.engines.dsh` 静默失效。当前声明 `>=0.2.1-rc.2 <0.3.0`（M1–M3 用到的 Host/Client API 已逐项在 rc.2 发布包上审计，见 `research/dsh-session-management-v2.md` §5.4）。
 
 ## 2. 包结构
 

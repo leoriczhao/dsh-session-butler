@@ -8,7 +8,7 @@ const packageJson = JSON.parse(
 
 test('DSH compatibility is declared only through top-level engines.dsh', () => {
   assert.equal(typeof packageJson.engines.dsh, 'string')
-  assert.ok(packageJson.engines.dsh.startsWith('>=0.2.1-rc.3'))
+  assert.ok(packageJson.engines.dsh.startsWith('>=0.2.1-rc.2'))
   assert.equal(packageJson.dsh.engines, undefined)
 })
 

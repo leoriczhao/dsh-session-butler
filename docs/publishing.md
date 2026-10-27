@@ -2,7 +2,7 @@
 
 > 目标：把 `dsh-session-butler`（Threadloom）作为一个**可安装、可发现、可更新**的 DSH npm 插件包发布。
 > 契约细节（字段、校验链路、25 条坑位）见 [`dsh-packaging-contract.md`](./dsh-packaging-contract.md)；本文只记录本项目要执行的命令与顺序。
-> 当前 DSH 运行时基线：`0.2.1-rc.3`（`engines.dsh: ">=0.2.1-rc.3 <0.3.0"`）。
+> 当前 DSH 运行时基线：`0.2.1-rc.2` 起（`engines.dsh: ">=0.2.1-rc.2 <0.3.0"`；下限经 API 审计，见 `research/dsh-session-management-v2.md` §5.4。npm `latest` 当前是 rc.2）。
 
 ## 0. 前置
 

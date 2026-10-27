@@ -19,6 +19,7 @@
 3. **唯一真正缺失的产品能力是删除**（tool / command / Remote / Host API / HTTP / CLI 全无，已发布版与 HEAD 一致）；「从会话新建会话」只缺 **agent tool 面**（GUI 入口齐全）。
 4. **第三方 npm 插件能新增的只有：Host 服务/工具/人类命令/Client slot/Host HTTP 路由。** **不能**新增 `ctx.remote.*` 命名空间（构建期 Typert codegen + 固定的 `api-remotes` 静态装配）。
 5. **版本差异必须按「已发布 rc 通道」vs「开发 HEAD」区分**（不是 rc.3 vs HEAD）：已发布的 **rc.2 / rc.3 / rc.4 的 fork 都写 `parentSession`**；HEAD（2026-10-23 `b096659` 之后）才改为不带血缘。`/api/session.markdown` 也是 HEAD 新增（已发布 rc.3/rc.4 都没有）。另外 **npm dist-tags：latest=rc.2、next=rc.4**，rc.3 不是当前发布指针。
+6. **`engines.dsh` 下限已定为 `>=0.2.1-rc.2 <0.3.0`**：M1–M3 实际用到的 Host/Client API 全部存在于 rc.2 发布包（§5.4 审计），因此不再用 rc.3 把 npm `latest` 用户排除在外。
 
 ---
 
@@ -270,10 +271,43 @@ REL/HEAD 一致（`@deepseek-ai/dsh-subagent-fork-in-process` README；rc.3/HEAD
 **对 Threadloom 的直接约束**：
 1. 级联删除/归档**只能**用 `origin === 'subagent'` 判定，绝对不能按 `parentSession`（D-004 正确，但 v1 的「fork 不写 parent」理由对**所有已发布版**都不成立，需修正）。
 2. **版本故事不是「rc.3 内两种行为」**：今天已发布的 rc.2/rc.3/rc.4 全部是「fork 带 parent」；HEAD 才是新行为。插件应运行时探测（`origin` 优先 + 对 parent 做防御），不要按版本号假设。
-3. **兼容下限需要重估**：npm `latest = rc.2`，当前 `engines.dsh >=0.2.1-rc.3` 会把 latest 用户排除在外；发布前需确认是否降到 `>=0.2.1-rc.2`（见 `docs/decisions.md` 待确认 Q7）。
+3. **兼容下限已重估并落地**：§5.4 对 M1–M3 实际用到的 API 做了 rc.2 发布包审计，全部存在 → `engines.dsh` 已改为 `>=0.2.1-rc.2 <0.3.0`（Q7 关闭）。
 4. 不要使用 `/api/session.markdown` / `formatSessionMarkdown` 作为已发布版可用能力。
 
 ---
+
+### 5.4 rc.2 API 审计（Threadloom M1–M3 实际用到的 API）
+
+结论：**全部存在于 `0.2.1-rc.2` 发布包** → `engines.dsh` 下限从 rc.3 下调为 `>=0.2.1-rc.2 <0.3.0`（覆盖 npm `latest`）。审计对象是 `/tmp/rel2/*@0.2.1-rc.2` 的解压产物（`lib/types` d.ts 与 bundle js）。
+
+| 表面 | API | rc.2 证据 | 用途 |
+|---|---|---|---|
+| HS | `sessionQuery`: observeSession / listSessions / filterSessions / readSession / readTitleSnapshots / traceSession / listEvents / filterEvents / readSurface | rc.2 `dsh-session-query` d.ts:47-150 | 列表/详情/血缘/冷会话读取 |
+| HS | `sessionPersistence`: open / stat / list | rc.2 d.ts:112-159 | 跨进程写租约探测、路径与大小 |
+| HS | `sessionTitle.rename(session,title)` | rc.2 d.ts:141 | 改名（可选 Host 路径） |
+| HS | `workspaceRegistry`: archiveSession / unarchiveSession / pinSession / unpinSession / resolveByPath；`Workspace.attachSession` | rc.2 `dsh-workspace` d.ts:146-265、entity.d.ts:71 | 归档/置顶/回收站清状态/fork attach |
+| HS | `subagents.listChildren / listDescendants` | rc.2 `dsh-subagent` d.ts:228,245 | 子代理级联 |
+| HS | `agents.create / resume / get / list`；`Agent.status` / `cancel` | rc.2 `dsh-agent` d.ts:278/286/343/357、runtime-types:147/157 | fork 工具、运行中判定、停止 |
+| HS | `agentDefaultModel.currentSelection` | rc.2 `dsh-agent-default-model` d.ts:42 | fork 工具的模型选择（对齐 Remote 实现） |
+| HS | `sessions.get / list / fork` | rc.2 `dsh-session` d.ts:414-513 | live 判定、可选 fork 路径 |
+| HS | `commands.register` | rc.2 `dsh-commands` d.ts:94 | `/session-butler` 命令面 |
+| HS | `tools.register` + `defineTool`（`ParameterSchemaSpec`、必填 `output`） | rc.2 `dsh-tools` index.d.ts:117、schema.d.ts:178-248 | agent 工具 |
+| HS | `sessionProjectionCache.cachedSnapshot` | rc.2 d.ts:94 | 列表/详情投影 |
+| HS | `webServer.register`（exact/prefix） | rc.2 `dsh-host-webserver` d.ts:31-35,174 | 删除/回收站 HTTP 桥 |
+| HS | `connection.requestRejection` | rc.2 `dsh-client-connection` rpc.d.ts:185 | 桥的请求鉴权 |
+| HS | `storageDomain.open` | rc.2 `dsh-storage-domain` d.ts:83 | 回收站索引 |
+| HS | `dshHomePath`（app-boot 提供） | rc.2 `dsh-app-boot` lib/index.js:4526 | 回收站根目录 |
+| RM | `remote.session` 19 个方法（list/search/rename/fork/create/page/projections/follow/cancel…） | rc.2 `api-session-controller` remote-client.d.ts | 管理页读写 |
+| RM | `remote.workspace` 11 个方法（archive/unarchive/pin/unpin/follow…） | rc.2 `api-workspace-controller` remote-client.d.ts | 归档/置顶 |
+| UI | slots：`main`(keyed)、`sidebar.panellist`、`sidebar.workspaces.session.menu.item`、`.row.action`、`shell.overlay` | rc.2 `client-ui-layout` d.ts:53、`client-ui-sidebar`、`client-ui-workspace` 构建产物 | 管理页/入口/浮层 |
+| UI | 行菜单 pin/rename/fork/archive/session-id；`menu.fork`=「分叉会话」 | rc.2 `client-ui-workspace` lib/client.js | 复用现有会话操作 |
+| UI | 会话页每完成轮 branch/`atSeq` 分叉 | rc.2 `client-ui-chat` lib/client.js（`message.branch`） | fork 入口 |
+| UI | standard hooks：`useSessions`/`usePanelInfo`(ui-layout)、`useWorkspaces`/`useSessionAccess`/`useSessionStatus`(ui-workspace) | rc.2 各 client 构建产物/类型 | 页面数据 |
+| 构建 | client module 契约：`window.__ModuleLoader__`、`dsh.client`、`loaded without registering` | rc.2 `dsh-client-modules` lib | 发布契约 |
+| 构建 | `PLATFORM_MODULES` 11 个且与 HEAD 完全一致 | rc.2 `dsh-client-web` platform.d.ts:7 | client bundle external 列表 |
+| 构建 | `@deepseek-ai/dsh-client-locale` 包存在 | npm `@0.2.1-rc.2` 可解析 | `dsh.client.inject` |
+
+**不需要 rc.2 提供、因而未纳入审计的能力**（当前未使用）：`/api/session.markdown`、`formatSessionMarkdown`（HEAD-only）、sdk-app 的 workspace 层（HEAD-only）、session-search 实验 bundle（opt-in）。
 
 ## 6. 对 Threadloom 的落地结论
 
@@ -297,7 +331,7 @@ REL/HEAD 一致（`@deepseek-ai/dsh-subagent-fork-in-process` README；rc.3/HEAD
 3. **存储删除原语缺失**：`SessionPersistence` 无 delete → 目录直删必须做 kind/路径校验并允许安全失败；注意本机会话目录命名混用（`session-<uuid>` 与裸 `<uuid>`）。
 4. **内容检索默认关闭**：侧栏搜索框会调 Remote 内容检索并在失败时进入 error 态；插件页面应做能力探测与降级（标题过滤兜底）。
 5. **workspace 服务仅 web-app（HEAD 还有 sdk-app）**：headless 场景管理页不可用，删除/列表只能 Host 侧（命令/工具）操作。
-6. **兼容下限待重估**：`latest=rc.2` 而当前 `engines.dsh` 下限是 rc.3；发布前确认目标版本（Q7）。
+6. **兼容下限已定**：`engines.dsh = ">=0.2.1-rc.2 <0.3.0"`（§5.4 审计全部命中；Q7 关闭）。未来若引入 HEAD-only API（如 markdown 导出）需重新收紧并写进 README。
 7. **U（未实测/未验证）**：发布版 `session/list` 是否有服务端上限、`openAt: first-search` 的首次搜索延迟、多进程写锁的精确语义、rc.2/rc.4 的 workspace 挂载层、rc.2 的 markdown 路由——本次未实测到运行时边界，不写成结论。
 
 ---

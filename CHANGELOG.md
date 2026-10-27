@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added — foundation (package scaffolding, no user-facing feature yet)
 
 - Publishable DSH plugin package `dsh-session-butler` (display name Threadloom):
-  npm manifest with `dsh.bundle.patch` + `dsh.client`, top-level `engines.dsh`,
+  npm manifest with `dsh.bundle.patch` + `dsh.client`, top-level `engines.dsh: >=0.2.1-rc.2 <0.3.0`
+  (lowered from rc.3 after auditing every MVP-used Host/Client API against the rc.2 release),
   locale metadata (en/zh), icon, MIT license and a `.npmignore`-free `files` closure.
 - Build pipeline: Host half compiled as ESM to `lib/` with declarations, Client half
   bundled as a DSH classic-script module factory at `lib/client.js`.

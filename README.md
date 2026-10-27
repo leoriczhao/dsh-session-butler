@@ -4,7 +4,7 @@
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
 **状态**：**foundation（基础包已就绪；能力调研 v2 已完成并经独立复核；MVP 功能开发中）**
-**兼容**：DSH `>=0.2.1-rc.3 <0.3.0`（顶层 `engines.dsh`）
+**兼容**：DSH `>=0.2.1-rc.2 <0.3.0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
 

@@ -15,7 +15,7 @@
 
 ## 安装
 
-DSH ≥ 0.2.1-rc.3（`engines.dsh`: `>=0.2.1-rc.3 <0.3.0`）。
+DSH ≥ 0.2.1-rc.2（`engines.dsh`: `>=0.2.1-rc.2 <0.3.0`；下限经本插件实际使用的 API 在 rc.2 发布包上审计确定）。
 
 ```bash
 # Web 侧：Plugins 页面安装，或由 agent 调用 plugin_manager 的 install_bundle

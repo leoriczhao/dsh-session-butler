@@ -18,7 +18,7 @@
 - **决策**：
   - npm 包名 **`dsh-session-butler`**（unscoped，npm 上可用）；产品显示名 **Threadloom**（`locale/*.json` 的 `meta.title`）。
   - 发布到 **npmjs 公共 registry**；MIT 许可证；首版 `0.1.0`。
-  - 兼容声明：顶层 `engines.dsh: ">=0.2.1-rc.3 <0.3.0"`；**不写** `dsh.engines`。
+  - 兼容声明：顶层 `engines.dsh: ">=0.2.1-rc.2 <0.3.0"`（起初按 rc.3；后按 M1–M3 实际用到的 API 在 rc.2 发布包上逐项审计，全部存在，故降到 rc.2 以覆盖 npm `latest`）；**不写** `dsh.engines`。
 - **影响**：`package.json`、`cordis.patch.yml`（行 `name` 必须是裸包名）、构建产物中的模块 id、locale、文档统一使用该包名；GitHub 仓库地址待发布前补 `repository`/`homepage`/`bugs`。
 
 ### D-003 删除采用「插件侧回收站优先」 · accepted
@@ -78,7 +78,7 @@
 ### D-011 兼容策略：顶层 `engines.dsh` 独占判定 + 可选能力探测 · accepted
 
 - **背景**：`evaluatePluginCompatibility` 只读顶层 `engines.dsh`；存在时忽略 dsh peers。`workspaceRegistry` 不在 base。
-- **决策**：顶层 `engines.dsh` 声明 0.2.x 范围；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
+- **决策**：顶层 `engines.dsh` 声明 `>=0.2.1-rc.2 <0.3.0`（经 API 审计，见 D-002/Q7）；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
 - **影响**：DSH 升级时先跑 verify；发现 API 变化收紧范围而非放宽。
 
 ### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · proposed
@@ -119,7 +119,7 @@
 | Q4 | 首版是否接受无内容级检索？ | 接受（D-007），内容检索二期 |
 | Q5 | 是否同时提供 CLI 子命令（`dsh session …`）？ | 二期；首版先做 `/session-butler` 命令 + Web 页 |
 | Q6 | 迁移中（formatStatus=migration-required）的会话删除策略？ | 先 resume 完成迁移再删，或拒绝并提示 |
-| Q7 | `engines.dsh` 下限要不要从 `>=0.2.1-rc.3` 降到 `>=0.2.1-rc.2`？npm `latest` 是 rc.2，rc.3 不是发布指针 | 发布前按实际用到的 API 在 rc.2 上复核；若兼容则降到 rc.2，否则保留 rc.3 并在 README 说明 |
+| Q7 ✅（已定 2026-10-27） | `engines.dsh` 下限要不要从 `>=0.2.1-rc.3` 降到 `>=0.2.1-rc.2`？ | **已定：降到 rc.2。** 审计了 M1–M3 实际用到的 30+ Host/Client API（sessionQuery/persistence/title、workspaceRegistry/attachSession、agents/agentDefaultModel、sessions、commands、tools/defineTool、webServer/connection、storageDomain、dshHomePath、projectionCache；remote.session/workspace、slots、row menu/branch、standard hooks、client module contract、11 platform modules），全部存在于 rc.2 发布包；未使用的 HEAD-only 能力（markdown 导出等）不影响下限。 |
 
 ## 发布门禁（MVP acceptance checklist）
 
