@@ -86,12 +86,13 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 | [`research/2026-10-28-codex-desktop-ui-audit.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-28-codex-desktop-ui-audit.md) | **实机审计**：ChatGPT 桌面端 Codex 部分的侧栏、行内动作、右键菜单、命令面板、快捷键与"删除为何不是核心"的证据 |
 | [`research/2026-10-chatgpt-desktop-conversation-management.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-chatgpt-desktop-conversation-management.md) | 产品对标：ChatGPT 桌面端 Chat/Work 的会话管理用例（Recents/Projects/Temporary/Archive/Delete） |
 | [`docs/d3-console-design.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/d3-console-design.md) | **D3 设计草案**：完整管理台的 IA、双用户能力矩阵、删除/回收站定位、与 DSH 插件管理 feature 的集成 |
+| [`research/2026-10-28-dsh-plugin-management-survey.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-28-dsh-plugin-management-survey.md) | DSH 插件管理能力调研（Plugins 页/内置插件/CLI）+ Threadloom 接入建议（`plugins.*` 扩展点、volatile 表单、健康快照） |
 
 ## 决策状态
 
 已定：包名/发布渠道/MIT（D-002）、删除采用回收站优先（D-003）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 用 main panel + sidebar（D-009）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
 
-待确认（D3）：**D-021** D3 以「库/详情/续聊/分叉/组织」为核心、删除/回收站降为清理模块；**D-022** 插件管理集成（复用 DSH Plugins 页/详情/启停 + `settings.plugins.tab` 设置页 + 运行期健康，不重做插件管理）。
+待确认（D3）：**D-021** D3 以「库/详情/续聊/分叉/组织」为核心、删除/回收站降为清理模块；**D-022** 插件管理集成（复用 DSH Plugins 页/详情/启停 + `plugins.*` 扩展点 + 运行期健康，不重做插件管理）。
 
 Q1–Q7 已全部收敛（回收站保留期 30 天不自动清理；永久删除默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。
 

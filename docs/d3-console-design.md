@@ -214,91 +214,80 @@ Threadloom（main 面板，keyed）
 
 ## 8. 与 DSH 插件管理 feature 的集成
 
-> 本节事实来自本机 DSH checkout（0.2.2-alpha.2）源码与真实插件页验收证据（`docs/evidence/plugin-detail.png`）；更细的插件管理契约见 `research/2026-10-28-dsh-plugin-management-survey.md`（后台复核中）。
+> 事实来自 `research/2026-10-28-dsh-plugin-management-survey.md`（DSH checkout 0.2.2-alpha.2，含 path:line 证据）与真实插件页证据 `docs/evidence/plugin-detail.png`。
+>
+> **修正**：D3 草案 v0.1 曾计划注册 `settings.plugins.tab`——调研证实这是错的：该 slot 属于「设置 → 内置插件」分区（现只有只读清单一个 tab），语义错位；第三方插件的配置/健康应挂在**侧栏 Plugins 页**的 `plugins.*` 扩展点上。本节按此重写。
 
-### 8.1 DSH 现有插件管理面（已核实，D3 直接复用）
+### 8.1 DSH 现有插件管理（两个页面 + 一条 CLI，全部复用）
 
-| 面 | 事实（源码/证据） | 对 Threadloom 的含义 |
+| 面 | 机制 | 对 Threadloom 的含义 |
 |---|---|---|
-| Plugins 设置页 | `packages/client/ui-settings-plugins` 拥有唯一 Settings 导航入口与 tab 容器；内置 inventory tab | 只能"贡献 tab"，不要抢 `settings.section` 导航行 |
-| 插件详情页 | 显示 icon / 名称 / 版本 / 包名 / 描述 / Uninstall / 启用开关 / `meta.detail` 长文 / 组件与运行状态（实测 `docs/evidence/plugin-detail.png`） | 安装、启停、卸载、版本、说明**已由 DSH 提供**，不重做 |
-| 运行状态 | Host `plugin-inventory` snapshot 每项含 `enabled`、`fiberPhase`（pending/loading/active/failed/unloading/null）、`diagnostic`、`managementAvailable` | fiber failed 已有诊断；**桥/存储/后端健康**需插件自报（§8.3） |
-| `settings.plugins.tab` | list/root slot，第三方 client 可注册 tab；options `id/order/label`（label 可为 thunk，本地化）；标准 props 含 `useRemoteAccess/useSessions/useSessionStatus/…`；由 ui-settings-plugins 运行时声明 | 用独立 id + inject 等待声明；设置页就注册在这里 |
-| 配置读写 | `ctx.remote.settings`（settings-controller）：`describe` 返回 schema/value/revision（secret 脱敏），`update/replace/mutate` 写回；`dsh-settings` 可把 Config 的 `.volatile()` 字段投影为表单（autoGenerate） | 配置只有**一个源**（profile patch）；不要在插件内再造一套配置存储 |
-| 安装/生命周期 | `dsh plugin …` 子命令把参数转发给 profile 目录里的 pnpm；`engines.dsh` 约束版本；profile bundle + `cordis.patch.yml` | 升级 = npm 版本 + patch；破坏性变更靠 CHANGELOG + storage schema 迁移 |
+| 侧栏 **Plugins 页**（`ui-plugin-manager`，Remote `pluginManager.*`） | bundle 卡片、行开关、卸载、`plugins.tab`（官方「已安装/发现」）、版本区块（仅 registry 安装的第三方有 `updatable`）、每插件 `plugins.row.config`/`bundle.config`/`detail.*` 扩展点 | 安装/卸载/启停/版本/说明**已自动提供**，D3 不重做 |
+| 设置 → **内置插件**（`pluginInventory.*`，只读） | 每项 `entryId/moduleName/meta/enabled/fiberPhase/diagnostic/managementAvailable` | fiber 级失败原因已有；功能级健康由插件自报（§8.4） |
+| `dsh plugin …` CLI | 转发 profile 目录的 pnpm；registry 安装才有升级语义 | 文档写安装/升级命令即可 |
+| `plugin_manager` agent 工具 | 需 danger-full-access 或逐次审批（默认 disabled） | 不依赖；不作为 D3 能力 |
 
-**结论**：D3 不需要"插件管理"模块；D3 要补的是**插件配置的可见可改**与**运行期健康/诊断**这两块 DSH 插件管理不覆盖的部分。
+### 8.2 用哪些插件页扩展点
 
-### 8.2 设置页（注册 `settings.plugins.tab`，不抢导航）
-
-注册参数与实现约束：
-
-- `id: 'threadloom-settings'`（独立 id，勿复用 shipped id），`order: 100`，`label` 用当前 locale 的 tab 名；
-- 在 `ctx.slots.inject('settings.plugins.tab', …)` 里注册，**等待 owner 声明**，声明不存在时不报错（headless/旧版本）；
-- 组件 props 使用标准 `PropsRuntime`/`PropsLocale`/`InjectFace` 形状（参考 `ui-settings-plugin-inventory` 的 tab 实现）；重渲染用 `ctx.slots.subscribe`/`locale.subscribe`。
-
-内容分组：
-
-| 分组 | 项 | 默认 | 说明 |
+| 用途 | slot | key/id | 说明 |
 |---|---|---|---|
-| 入口 | 主面板入口 / 侧栏入口 | 开 | 关闭后仍可用命令与工具 |
-| 回收站 | `trashRetentionDays` | 30 | 0 = 不自动清理（只标记 expired） |
-|  | `cascadeSubagents` | true | 仅 `origin==='subagent'` |
-| 危险 | `permanentDelete` | disabled | confirm = 输入完整 session id |
-| 运行中 | `liveSettleTimeoutMs` | 3000 | 归档 stopActivity 后的等待上限 |
-| 检索 | 内容搜索 opt-in | 关 | 依赖 `session-query` 后端；不可用时降级 |
-| 诊断 | 健康快照 / 最近错误 / 复现命令 | — | 只读 |
+| 配置表单 | `plugins.row.config`（keyed） | `dsh-session-butler#session-butler` | 行页出现「配置」入口；owner 传入 `form`（需 volatile 字段） |
+| 状态/统计 | `plugins.bundle.config`（keyed） | `dsh-session-butler` | bundle 页内联区块；**只有 `view:'page'`，无 form** |
+| 健康徽标 | `plugins.detail.badge`（list） | `id: threadloom-health` | bundle 页标题旁绿/黄/红 |
+| 诊断区 | `plugins.detail.section`（list） | `id: threadloom-diagnostics` | 桥/存储/最近错误，可复制复现命令 |
 
-**配置写入路径（二选一，D3.0 验证后定稿）**：
+- 不使用 `settings.plugins.tab`（语义错位）；也不建议 `plugins.tab`（会把会话库塞进插件页、与主面板重复）。
+- 可选兜底：若未来需要一个**独立设置导航页**，用 `settings.section`（`id: threadloom`），不要与 row 页同时放同一组设置。
+- 所有注册都走 `ctx.slots.inject(...)`：宿主未声明 slot 时只等待、不抛错，天然完成版本特性探测。
 
-- **A 复用 DSH（首选）**：把 Config 字段标为 `.volatile()`，让 `dsh-settings` 的原生表单投影出来（autoGenerate）。若第三方插件也被允许显示在该页，则设置 tab 只展示健康 + 只读配置，写入交给 DSH。
-- **B 自建 tab**：读桥 `/session-butler/api/status` 展示 resolved config 与"复制 patch 片段"，写入仍走 profile patch（**不建第二配置源**）。
+### 8.3 配置：`volatile` + row 页表单，单源写 profile patch
 
-> 风险：`settings.plugins.tab` 是运行时声明的 slot；旧 DSH 版本可能不存在 → tab 注册失败要静默降级，插件页仍显示基本条目。
+- 现有 3 个 Config 字段（`trashRetentionDays` / `cascadeSubagents` / `permanentDelete`，`src/config.ts`）**必须补 `.volatile()`** 才会进入 DSH 的表单投影；P0 还要新增 `liveSettleTimeoutMs`、`panelEntryEnabled` 两个字段（后者控制侧栏入口是否注册）。
+- 表单来源：Plugins 页 row 页从 `ui-settings` 的 `ctx.configForms` 生成 `form: {state, mutate}`；我们只负责**渲染字段**（DSH 没有自动表单页面——`autoGenerate` 无客户端消费，`configure({auto:false})` 只翻标志）。
+- 保存：`form.mutate([{path, value}], state.revision)` → config-editor 写 profile `cordis.patch.yml` → Loader 热应用。**不新建 HTTP 写接口、不建第二配置源**。
+- 降级：无 `ui-settings`（headless/旧组合）时 row 页无表单；`plugins.row.config` 组件显示只读配置 + 指向 profile patch 的说明，不报红。
 
-### 8.3 运行期健康（补 inventory 看不到的部分）
+### 8.4 运行期健康（补 inventory 看不到的功能级状态）
 
-`GET /session-butler/api/status` 扩展为：
+`POST /session-butler/api/status` 扩展为（主面板与插件页共用同一快照）：
 
 ```ts
 interface ButlerStatus {
+  ok: boolean
   version: string
   dshVersion: string
   host: { ok: boolean; error?: string }
-  bridge: { ok: boolean; lastError?: string }
-  storage: { trashWritable: boolean; metaWritable: boolean; trashCount: number }
-  backends: { sessionQuery: boolean; workspaceRegistry: boolean; sessionTitle: boolean }
+  bridge: { ok: boolean; mounted: boolean; lastError?: string }
+  storage: { trashWritable: boolean; sessionsRootWritable: boolean; trashCount: number }
+  backends: { sessionQuery: boolean; workspaceRegistry: boolean; sessionController: boolean; tools: boolean; commands: boolean }
   counts: { sessions: number; trashed: number; live: number }
+  errors: Array<{ code: string; at: number; count: number }>
 }
 ```
 
-- 设置 tab 顶部用绿/黄/红显示；失败时给出可操作文案（"桥不可达：检查 web 组合/认证"）。
-- 与 DSH 插件详情页的 `fiberPhase/diagnostic` 互补：前者是插件进程级，后者是**功能级**。
+- `plugins.detail.badge`：`ok` → 绿「正常」；`host`/`bridge` 降级 → 黄「受限」；存储不可写 → 红「不可用」，title 显示原因。
+- `plugins.bundle.config` + `plugins.detail.section`：完整快照、最近错误、复制诊断。
+- 可选增强：`remote.pluginInventory` 读本行 `fiberPhase/diagnostic`（owner 恒放行，非 owner 走 remoteAccess）；权限拒绝时静默降级到自有 `status`。
+- 组合降级：无 `webServer`/`connection` 时桥不挂载 → 显示「仅命令/工具可用」，不报红。
 
-### 8.4 命令 / 工具 / 市场的可见性
+### 8.5 安装 / 升级 / 兼容
 
-- 命令：`/session-butler list|trash|restore|purge`（已有），P1 加 `/session-butler search|stats|trash-empty`；
-- 工具：`session_butler_list/detail/new/fork`（已有）；描述中明确"只读/创建，不删除"；
-- 插件页/README：名称、版本、描述、icon、locale（zh/en）、`meta.detail`（`docs/usage.md`）已在验收中验证可显示；
-- 市场（dshmarket）：复用同一套 manifest 元数据，不额外造字段（若市场要求额外字段，D3.0 补齐）。
+- 当前是 `link:` 安装 → **没有版本/升级 UI**（`updatable=false`）；要验证升级体验必须先发布 npm（0.1.2 待发），再用 registry 安装。
+- `engines.dsh` 保持 `>=0.2.1-rc.2 <0.3.0-0`：新 `plugins.*` 集成在 rc.2 组合下静默跳过（主面板/命令/工具仍可用），发布说明标注「插件页配置区需 0.2.2+」。
+- 不做插件内自更新（运行中替换自身风险高，官方也无自更新入口）；升级引导到 Plugins 页版本区块或 CLI 重装。
+- 破坏性变更：`storageDomain` schema 迁移 + CHANGELOG；`meta.detail`/icon/locale 已满足插件页与市场展示。
 
-### 8.3 命令与工具（对插件管理可见）
+### 8.6 命令 / 工具 / 市场可见性
 
-- 命令：`/session-butler list|trash|restore|purge`（已有），P1 加 `/session-butler search|stats|trash-empty`；命令描述与插件页一致。
-- 工具：`session_butler_list/detail/new/fork`（已有）；工具页的描述中明确"只读/创建，不删除"。
-- 市场/发现：README/description/icon/locale 齐全；`dshmarket` 展示时用同一套元数据（待调研确认字段）。
-
-### 8.4 诊断与支持
-
-- 设置页"导出诊断"：版本、配置解析值（脱敏）、路由可达性、trash 目录可写、最近 20 条错误码、复现命令；
-- 常见错误码（`session-running`、`session-locked`、`permanent-delete-disabled`、`trash-missing`）在 UI 有中文解释与修复建议。
-
----
+- 命令：`/session-butler list|trash|restore|purge`（已有），P1 加 `search|stats|trash-empty`；
+- 工具：`session_butler_list/detail/new/fork`（已有），描述明确「只读/创建，不删除」；
+- 插件页/市场：名称、版本、描述、icon、zh/en locale、`meta.detail`（`docs/usage.md`）已由 DSH 自动渲染；市场复用同一套 npm manifest，不加私有字段。
 
 ## 9. Host / Client 架构增量
 
 ### 9.1 Host
 
+- `config.ts`：现有 3 字段补 `.volatile()`，新增 `liveSettleTimeoutMs`、`panelEntryEnabled`（§8.3）。
 - `service.ts`：现有 list/detail/trash/restore/purge 之外增加 `stats()`、`health()`、`tags/notes CRUD`（P1）、`exportMarkdown()`（P1，复用或自写）。
 - `trash-store.ts`：sidecar `schemaVersion`、保留期扫描、批量恢复、孤儿 sidecar 清理。
 - `bridge.ts`：现有路由不变；新增 `status` 扩展字段、`stats`、`meta`、`export`（P1）；统一错误信封。
@@ -308,7 +297,7 @@ interface ButlerStatus {
 ### 9.2 Client
 
 - 现有：`main` keyed 页面 + `sidebar.panellist` 入口 + locale。
-- 新增：`settings.plugins.tab` 页面（§8.2）；`sidebar.session.row.trailing` 轻量徽标（标签/子代理/大小，P2，避免与官方 hover 冲突）；`shell.overlay` 确认框（永久删除输入 id）。
+- 新增：插件页扩展（§8.2）——`plugins.row.config` 配置表单（需 Config 字段 `.volatile()`）、`plugins.bundle.config` 状态区、`plugins.detail.badge`/`section` 健康与诊断；`sidebar.session.row.trailing` 轻量徽标（标签/子代理/大小，P2，避免与官方 hover 冲突）；`shell.overlay` 确认框（永久删除输入 id）。
 - 页面拆分：`Overview`/`Library`/`Trash`/`Settings` + `DetailDrawer`；共享 `List`/`FilterChips`/`EmptyState`。
 - 数据：桥优先，`sessions.refresh()` 在写操作后触发；本地缓存只做 UI 状态（筛选/滚动/选择）。
 - 主题：用 DSH token（`docs/dsh-web-ui.md` §8），不硬编码颜色；暗色跟随。
@@ -319,7 +308,7 @@ interface ButlerStatus {
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| D3.0 | 设计定稿 + 插件管理集成调研落地；设置页骨架；status 健康快照 | 设置页可见；健康红黄绿正确；无回归 |
+| D3.0 | 设计定稿 + 插件页集成（row config / bundle config / detail badge+section）+ Config volatile；status 健康快照；`liveSettleTimeoutMs`/`panelEntryEnabled` 接线 | 插件页出现「配置」入口；保存写回 profile patch 且热生效；健康红黄绿正确；无回归 |
 | D3.1 | Library（搜索/筛选/排序/分页/批量 pin+archive）+ Detail 抽屉 + 概览 | 1k 会话首屏 <300ms；批量操作逐项结果可见 |
 | D3.2 | 分叉入口（human）+ fork 边界（P1）+ Trash 完整（保留期/批量恢复/强确认）+ live 引导 | 误删=0；恢复=100%；live 阻断有文案 |
 | D3.3 | 标签/备注、内容搜索 opt-in、导出 MD、Cleanup、诊断、i18n/主题、审计 | 标签筛选可组合；导出内容正确；诊断可复制 |
@@ -329,14 +318,14 @@ interface ButlerStatus {
 
 ## 11. 风险与开放问题
 
-1. **配置写入**：DSH 插件管理页是否支持第三方运行时写配置？若不支持，设置页只读 + 复制 patch（待调研确认）。
-2. **slot 可用性**：`settings.plugins.tab` 在不同 DSH 版本是否稳定？需要 `engines.dsh` 下限/特性探测。
-3. **写操作重复**：官方已有 pin/archive；插件批量操作走官方 remote 还是 Host 服务？需确认失败语义与刷新。
-4. **live 会话**：trash 的 stopActivity + settle 是否总能成功；失败时错误码与 UI 引导。
-5. **性能**：1k+ 会话的 stat/事件折叠成本；是否引入本地索引（P2）。
-6. **内容搜索**：`session-query` 后端默认关闭；插件要检测并降级。
-7. **隐私**：回收站/导出包含用户内容；默认不导出、不云同步；诊断导出需脱敏。
-8. **兼容**：fork 血缘在 REL 与 HEAD 不同（v2 §5.3）；D3 以 DSH 运行版探测为准。
+1. **row config 表单成立条件**：需 `.volatile()` + `ui-settings` 已挂载；必须在真实 0.2.2 profile 实测「配置」入口出现、保存后 profile `cordis.patch.yml` 变化且不重挂插件。未通过则降级为只读配置 + patch 说明。
+2. **插件页 slot 稳定性**：`plugins.*` 是 0.2.2 的契约，不在 `engines.dsh` 语义内；全部用 `ctx.slots.inject` 探测（rc.2 组合无入口但主面板/命令/工具可用）。DSH 升级后需重跑审计 + 浏览器实测。
+3. **`remote.pluginInventory` 权限**：owner 页面恒放行，非 owner/liveshare 可能拒绝；只做可选增强，失败降级到自有 `status`。
+4. **没有"打开主面板"API**：`plugins.detail.actions` 无跨插件导航能力，放弃"从插件页一键打开 Threadloom"或在 README 给入口说明。
+5. **bundle.config 无 form**：配置只放 row 页，bundle 页只做状态/统计，避免两处编辑入口。
+6. **升级体验**：当前 `link:` 安装无 `updatable`；发布 npm 后需验证 remove+install 对运行中 client 半侧/主面板的影响与失败回滚文案。
+7. **写操作重复**：官方已有 pin/archive；批量操作走官方 remote 还是 Host 服务需实测失败语义与刷新。
+8. **live/性能/搜索/隐私/兼容**：trash 的 stopActivity+settle 成功率；1k+ 会话 stat 成本；`session-query` 默认关闭需降级；回收站/导出隐私；fork 血缘 REL≠HEAD（v2 §5.3）。
 
 ---
 

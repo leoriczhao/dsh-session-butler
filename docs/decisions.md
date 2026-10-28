@@ -155,16 +155,17 @@
 - **决策**：D3 的核心能力 = Library（检索/分组/预览）+ Detail（血缘/成本/产物）+ Resume（打开/续聊）+ Fork（工具/面板）+ Organize（置顶/归档/标签/备注）；删除/回收站作为 **Cleanup** 模块（默认 `permanentDelete=disabled`），成功指标是「误删=0、可恢复=100%、live 误删=0」，而不是删除量。
 - **证据**：`research/2026-10-28-codex-desktop-ui-audit.md` §3/§9；`research/codex-session-management.md` §E；`docs/decisions.md` D-003/D-005/D-013。
 
-### D-022 插件管理集成：复用 DSH Plugins 页 + `settings.plugins.tab` + 运行期健康，不重做插件管理 · proposed（待用户确认）
+### D-022 插件管理集成：复用侧栏 Plugins 页 + `plugins.*` 扩展点 + 运行期健康，不重做插件管理 · proposed（待用户确认）
 
-- **背景**：DSH 已有插件管理（Plugins 设置页、插件详情/启停/卸载、`plugin-inventory` 的 fiberPhase/diagnostic、`dsh plugin` 转发 pnpm、`ctx.remote.settings` 配置读写）；Threadloom 此前的详情页/图标/描述/README 已由该机制展示（`docs/evidence/plugin-detail.png`）。
+- **背景**：DSH 0.2.2 的插件管理是「侧栏 Plugins 页（`ui-plugin-manager`/`pluginManager.*`）+ 设置→内置插件只读清单（`pluginInventory.*`）+ `dsh plugin` CLI」；安装/启停/卸载/版本/详情/README 已自动提供（`docs/evidence/plugin-detail.png`）。第三方可挂 `plugins.row.config`/`bundle.config`/`detail.badge|section` 等扩展点。
 - **决策**：
   - 安装/启停/卸载/版本/README 交给 DSH，插件不重做；
-  - 配置保持**单源**（profile patch / Config）：优先让 Config 字段 `.volatile()` 走 DSH 原生表单；否则设置 tab 只读展示 + 复制 patch 片段，不建第二配置源；
-  - 在 Plugins 设置页注册一个 `settings.plugins.tab`（独立 id、inject 等待声明、旧版本静默降级），承载健康/诊断/入口设置；
-  - 运行期健康由 `/session-butler/api/status` 自报（桥/存储/后端/计数），补 `plugin-inventory` 看不到的功能级状态；
+  - 配置保持**单源**（profile patch / Config）：Config 字段补 `.volatile()`，通过 `plugins.row.config` 的 `form` 写回；**不建第二配置源**；
+  - 插件页用 `plugins.row.config`（key `dsh-session-butler#session-butler`）+ `plugins.bundle.config`（key `dsh-session-butler`，无 form）+ `plugins.detail.badge|section`（健康/诊断）；**不使用 `settings.plugins.tab`**（那是「设置→内置插件」分区，语义错位）；独立设置页仅 `settings.section` 兜底；
+  - 运行期健康由 `/session-butler/api/status` 自报（桥/存储/后端/计数），补 `plugin-inventory` 只有 fiberPhase/diagnostic 的不足；可选读 `remote.pluginInventory`，权限拒绝则降级；
+  - 升级体验依赖 registry 安装（当前 `link:` 无 `updatable`），发布 npm 后复验；
   - 破坏性动作仅人类 UI；agent 工具保持只读/创建/分叉。
-- **证据**：`packages/client/ui-settings-plugins`、`packages/client/ui-settings-plugin-inventory`、`packages/host/plugin-inventory/src/types.ts`、`packages/boot/settings-controller`/`packages/settings/settings`、`apps/cli/src/args.ts`（plugin 子命令）；`docs/d3-console-design.md` §8。
+- **证据**：`research/2026-10-28-dsh-plugin-management-survey.md`（含 path:line）、`packages/client/ui-plugin-manager/src/client/slot-contract.ts:118-168`、`packages/client/ui-settings/src/client/contract/slots.ts:66`、`packages/boot/plugin-manager/src/types.ts:103-107`、`docs/d3-console-design.md` §8。
 
 ## 待确认问题（发布前必须收敛）
 
