@@ -95,8 +95,21 @@ test('apply registers the main panel and the sidebar row through independent inj
   assert.ok(fake.localeRegistrations.every(entry => entry.namespace === 'session-butler'))
   assert.ok(fake.localeRegistrations.every(entry => typeof entry.dict.title === 'string'))
 
-  assert.equal(fake.slotRegistrations.length, 2)
-  const [panel, row] = fake.slotRegistrations
+  assert.equal(fake.slotRegistrations.length, 6)
+  const pluginSlots = fake.slotRegistrations.filter(entry => entry.options.name.startsWith('plugins.'))
+  assert.deepEqual(pluginSlots.map(entry => entry.options.name).sort(), [
+    'plugins.bundle.config',
+    'plugins.detail.badge',
+    'plugins.detail.section',
+    'plugins.row.config',
+  ])
+  const rowConfig = pluginSlots.find(entry => entry.options.name === 'plugins.row.config')
+  assert.equal(rowConfig.options.key, 'dsh-session-butler#session-butler')
+  assert.equal(pluginSlots.find(entry => entry.options.name === 'plugins.bundle.config').options.key, 'dsh-session-butler')
+  const panel = fake.slotRegistrations.find(entry => entry.options.name === 'main')
+  const row = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.panellist')
+  assert.ok(panel)
+  assert.ok(row)
   assert.equal(panel.options.name, 'main')
   assert.equal(panel.options.key, 'session-butler')
   assert.equal(panel.options.locale, 'session-butler')
@@ -138,7 +151,14 @@ test('effect disposal releases locale and slot registrations', async () => {
   assert.equal(typeof cleanup, 'function')
   cleanup()
   assert.deepEqual(fake.localeCleanups.sort(), ['session-butler:en', 'session-butler:zh'])
-  assert.deepEqual(fake.slotCleanups, ['sidebar.panellist', 'main'])
+  assert.deepEqual(fake.slotCleanups, [
+    'plugins.detail.section',
+    'plugins.detail.badge',
+    'plugins.bundle.config',
+    'plugins.row.config',
+    'sidebar.panellist',
+    'main',
+  ])
 })
 
 test('the page renders session rows with the injected locale and actions', async () => {

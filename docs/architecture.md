@@ -190,6 +190,7 @@ src/client/index.tsx       # apply/inject：slots/locale/uiWorkspace/sessions
    └── ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
          {name:'sidebar.panellist', id:'session-butler', order:6, label, locale}, Icon))
 src/client/page.tsx        # 列表/筛选/多选批量/详情弹窗/回收站/删除确认/永久删除确认（页内 fixed 对话框）
+src/client/plugin-page.tsx # D3.0：plugins.row.config / bundle.config / detail.badge / detail.section 四个贡献
 src/client/bridge.ts       # document-relative fetch + 网关信封 + BridgeError
 src/client/locale.ts       # NS='session-butler' + zh/en 字典（ctx.locale.register 运行时注册）
 src/client/contract.ts     # 本地结构化端口（不 import 任何 @deepseek-ai/dsh-* 包）
@@ -202,6 +203,13 @@ src/client/contract.ts     # 本地结构化端口（不 import 任何 @deepseek
 - 删除/永久删除确认框先用页内 `position: fixed` 对话框（状态与页面同源，避免为浮层引入跨组件 store）；若 M3 需要从会话列表行直接触发确认，再迁到 `shell.overlay`。
 - 数据刷新：trash/restore（含批量）后调用 `ctx.sessions.refresh()`；回收站列表由桥重新拉取。改名/置顶/归档/取消归档不在本页重复实现（官方 UI 已覆盖）。
 - M3 交互：会话/回收站两个标签页都支持多选（全选、清空、选中计数）；批量移入回收站先并行取 detail 预检迁移态与级联数，再确认；批量恢复直接执行并以聚合结果提示。详情弹窗复用同一个 `detail` 桥方法，展示统计/血缘/enrichment，不额外发起破坏性请求。
+
+### 4.1 D3.0 插件页集成（已实现，2026-10-28）
+
+- **配置**：`src/config.ts` 的 5 个字段全部 `.volatile()`（`trashRetentionDays`、`cascadeSubagents`、`permanentDelete`、`liveSettleTimeoutMs`、`panelEntryEnabled`），DSH settings 域据此生成 `session-butler` 命名空间的表单；`readConfigValue()` 同时接受 volatile 句柄与普通值，Host 读取后以纯值注入 service。
+- **插件页贡献**：`src/client/plugin-page.tsx` 注册 `plugins.row.config`（key `dsh-session-butler#session-butler`，渲染 DSH 提供的 form 并保存）、`plugins.bundle.config`（key `dsh-session-butler`，状态区块）、`plugins.detail.badge`/`section`（健康徽标与诊断区块）；宿主未声明这些 slot 时 `ctx.slots.inject` 静默等待。
+- **侧栏入口**：客户端通过可选 `ctx.get('configForms')` 读取本插件 volatile 配置，`panelEntryEnabled=false` 时注销 `sidebar.panellist` 行；服务缺失时默认注册，保持旧宿主兼容。
+- **健康快照**：`service.health()` + 桥 `status` 方法返回版本、存储可写性、后端能力、会话/回收站/运行中计数与最近 20 条错误；错误环形缓冲由桥在 `ok:false`/内部错误时记录。
 
 关键不变量：
 

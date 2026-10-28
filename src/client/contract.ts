@@ -47,12 +47,78 @@ export interface WorkspaceSnapshotLike {
   readonly state?: 'idle' | 'loading' | 'error'
 }
 
-/** The bridge's configuration snapshot. */
+/** One recent bridge failure included in the health snapshot. */
+export interface BridgeErrorLike {
+  readonly code: string
+  readonly at: number
+  readonly message?: string
+}
+
+/** The bridge's configuration and health snapshot. */
 export interface BridgeStatus {
   readonly retentionDays: number
   readonly cascadeSubagents: boolean
   readonly permanentDelete: 'disabled' | 'confirm'
   readonly workspaceAvailable: boolean
+  readonly ok?: boolean
+  readonly version?: string
+  readonly host?: { readonly ok: boolean; readonly error?: string }
+  readonly bridge?: { readonly ok: boolean; readonly mounted: boolean }
+  readonly storage?: {
+    readonly trashWritable: boolean
+    readonly sessionsRootWritable: boolean
+    readonly trashCount: number
+  }
+  readonly backends?: {
+    readonly sessionQuery: boolean
+    readonly workspaceRegistry: boolean
+    readonly sessionController: boolean
+    readonly tools: boolean
+    readonly commands: boolean
+  }
+  readonly counts?: {
+    readonly sessions: number
+    readonly trashed: number
+    readonly live: number
+  }
+  readonly errors?: readonly BridgeErrorLike[]
+}
+
+/** Configuration values the Client half reads from DSH settings. */
+export interface ClientConfigLike {
+  readonly panelEntryEnabled?: boolean
+  readonly trashRetentionDays?: number
+  readonly cascadeSubagents?: boolean
+  readonly permanentDelete?: 'disabled' | 'confirm'
+  readonly liveSettleTimeoutMs?: number
+}
+
+/** The DSH settings form snapshot for one plugin entry. */
+export interface ConfigFormSnapshotLike<T> {
+  readonly status: 'loading' | 'ready' | 'unavailable'
+  readonly value?: T | undefined
+  readonly revision?: number | undefined
+  readonly writable: boolean
+}
+
+/** One field operation accepted by the DSH settings form. */
+export interface ConfigPathOpLike {
+  readonly op: 'set' | 'unset'
+  readonly path: readonly string[]
+  readonly value?: unknown
+}
+
+/** The DSH settings form for one plugin entry (client half of `configForms`). */
+export interface ConfigFormLike<T> {
+  getSnapshot(): ConfigFormSnapshotLike<T>
+  subscribe(listener: () => void): () => void
+  mutate(ops: readonly ConfigPathOpLike[], expectedRevision?: number): Promise<boolean>
+  set(field: string, value: unknown): Promise<boolean>
+}
+
+/** The `configForms` client service. */
+export interface ConfigFormsLike {
+  get<T>(entryId: string): ConfigFormLike<T>
 }
 
 /** One trashed session as returned by the Host bridge. */
@@ -192,6 +258,8 @@ export interface ClientContextLike {
   }
   readonly uiWorkspace: { openSession(sessionId: string): void }
   readonly sessions?: { refresh(): Promise<void> }
+  /** Cordis service lookup; used for optional services like `configForms`. */
+  get?(name: string): unknown
   effect(execute: () => (() => void) | void, label?: string): unknown
   logger?: { warn(message: string): void }
 }

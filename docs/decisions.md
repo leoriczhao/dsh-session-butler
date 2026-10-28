@@ -149,13 +149,13 @@
 - **决策**：`trashMany` / `restoreMany` 接收 1–50 个非空字符串 id（Host 侧去重）；每项独立执行，单项失败写入 `items[].error`，不影响其余项；`moved`/`failed` 为聚合结果。级联已提前移走的 id 在后续显式条目中返回 `ok:true, moved:[]` 的 no-op，而不是重复失败。
 - **实现（M3）**：桥 `trash-many`/`restore-many`；Web 页多选 + 批量确认；测试覆盖部分失败、重复/级联重叠、空数组、超 50、混合类型。
 
-### D-021 D3 定位：完整管理台以「库/详情/续聊/分叉/组织」为核心，删除/回收站降为「清理」模块 · proposed（待用户确认）
+### D-021 D3 定位：完整管理台以「库/详情/续聊/分叉/组织」为核心，删除/回收站降为「清理」模块 · accepted（用户 2026-10-28 确认）
 
 - **背景**：用户要求 D3「要做就做完整」，并质疑「删除/回收站是否该作为下一版核心」。Codex 桌面 UI 实机显示：删除位于右键菜单最底部、无快捷键、无回收站；行内主生命周期动作是归档（可恢复，Ctrl+Shift+A）。
 - **决策**：D3 的核心能力 = Library（检索/分组/预览）+ Detail（血缘/成本/产物）+ Resume（打开/续聊）+ Fork（工具/面板）+ Organize（置顶/归档/标签/备注）；删除/回收站作为 **Cleanup** 模块（默认 `permanentDelete=disabled`），成功指标是「误删=0、可恢复=100%、live 误删=0」，而不是删除量。
 - **证据**：`research/2026-10-28-codex-desktop-ui-audit.md` §3/§9；`research/codex-session-management.md` §E；`docs/decisions.md` D-003/D-005/D-013。
 
-### D-022 插件管理集成：复用侧栏 Plugins 页 + `plugins.*` 扩展点 + 运行期健康，不重做插件管理 · proposed（待用户确认）
+### D-022 插件管理集成：复用侧栏 Plugins 页 + `plugins.*` 扩展点 + 运行期健康，不重做插件管理 · accepted（用户 2026-10-28 确认）
 
 - **背景**：DSH 0.2.2 的插件管理是「侧栏 Plugins 页（`ui-plugin-manager`/`pluginManager.*`）+ 设置→内置插件只读清单（`pluginInventory.*`）+ `dsh plugin` CLI」；安装/启停/卸载/版本/详情/README 已自动提供（`docs/evidence/plugin-detail.png`）。第三方可挂 `plugins.row.config`/`bundle.config`/`detail.badge|section` 等扩展点。
 - **决策**：
@@ -166,6 +166,7 @@
   - 升级体验依赖 registry 安装（当前 `link:` 无 `updatable`），发布 npm 后复验；
   - 破坏性动作仅人类 UI；agent 工具保持只读/创建/分叉。
 - **证据**：`research/2026-10-28-dsh-plugin-management-survey.md`（含 path:line）、`packages/client/ui-plugin-manager/src/client/slot-contract.ts:118-168`、`packages/client/ui-settings/src/client/contract/slots.ts:66`、`packages/boot/plugin-manager/src/types.ts:103-107`、`docs/d3-console-design.md` §8。
+- **实现（D3.0，2026-10-28）**：`src/config.ts` 5 字段 volatile；`src/client/plugin-page.tsx` 四个贡献；`service.health()` + `/status`；`configForms` 门控侧栏入口。真实插件页浏览器验证待发布前完成（见 D3 里程碑）。
 
 ## 待确认问题（发布前必须收敛）
 

@@ -15,7 +15,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
-import { Config, type ThreadloomConfig } from './config.js'
+import { Config, readConfigValue, type ThreadloomConfig } from './config.js'
 import { mountBridge } from './host/bridge.js'
 import { createButlerCommand } from './host/command.js'
 import type {
@@ -34,6 +34,7 @@ import type {
 import { SessionButlerService } from './host/service.js'
 import { registerButlerTools } from './host/tools.js'
 import { API_PREFIX, PANEL_ID, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
+import { PLUGIN_VERSION } from './host/version.js'
 
 export { Config, PLUGIN_ID, PLUGIN_ROW_ID, PANEL_ID, API_PREFIX }
 export type { ThreadloomConfig }
@@ -97,9 +98,17 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     trashRoot: homePath('session-butler', 'trash'),
     query,
     persistence,
-    retentionDays: config.trashRetentionDays,
-    cascadeSubagents: config.cascadeSubagents,
-    permanentDelete: config.permanentDelete,
+    retentionDays: readConfigValue(config.trashRetentionDays),
+    cascadeSubagents: readConfigValue(config.cascadeSubagents),
+    permanentDelete: readConfigValue(config.permanentDelete),
+    liveSettleTimeoutMs: readConfigValue(config.liveSettleTimeoutMs),
+    pluginVersion: PLUGIN_VERSION,
+    capabilities: () => ({
+      workspaceRegistry: host.get<WorkspaceRegistryPort>('workspaceRegistry') !== undefined,
+      sessionController: host.get<ButlerSessionCreation>('sessionController') !== undefined,
+      tools: host.get<ToolsPort>('tools') !== undefined,
+      commands: host.get<CommandsPort>('commands') !== undefined,
+    }),
     // Getters keep late-mounted services visible without delaying this plugin's
     // activation (the Web profile mounts some of them after the bundle rows).
     sessions: () => host.get<SessionsPort>('sessions'),

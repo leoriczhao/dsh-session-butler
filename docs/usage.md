@@ -40,6 +40,16 @@ dsh plugin --profile <profile> remove dsh-session-butler
 - **回收站**：列出已删除会话（删除时间、原路径、是否过保留期、级联关系）；「恢复」直接移回原目录；「永久删除」需要配置 `permanentDelete: confirm` 并再次输入完整 session id。
 - 顶部「刷新」会同时刷新会话列表与回收站；所有失败都以稳定错误码显示（如 `session-locked`、`permanent-delete-disabled`）。
 
+## DSH Plugins 页面（D3.0）
+
+插件的配置字段全部声明为 DSH 的 volatile 配置，因此可以在 **DSH Plugins 页面**直接编辑（保存写回 profile patch，无需改文件）：
+
+- 打开 DSH Plugins 页 → 选中 **Threadloom** bundle → 行 **session-butler** 的「配置」入口；
+- 页面包含：回收站保留天数、运行中等待上限、级联子代理、侧栏入口开关、永久删除级别；
+- bundle 页与插件详情页还会显示 **功能级健康**（版本、会话/回收站/运行中数量、存储可写性、后端能力、最近错误），数据来自插件自报的 `/session-butler/api/status`。
+
+> 需要 DSH 0.2.2+ 的组合才会出现这些入口；旧版本上 Settings 表单与插件页区块会静默跳过，主管理页/命令/工具不受影响。
+
 ## Agent 工具（M3 + 0.1.2）
 
 插件注册四个模型可见工具（删除等破坏性写操作仍只留给命令/管理页）：
@@ -78,9 +88,11 @@ dsh plugin --profile <profile> remove dsh-session-butler
 ```yaml
 - id: session-butler
   config:
-    trashRetentionDays: 30     # 回收站保留天数；0 = 不自动清理
-    cascadeSubagents: true     # 删除时级联子代理会话（fork 永不级联）
-    permanentDelete: disabled  # disabled | confirm（confirm 需输入完整 session id）
+    trashRetentionDays: 30        # 回收站保留天数；0 = 不自动清理
+    cascadeSubagents: true        # 删除时级联子代理会话（fork 永不级联）
+    permanentDelete: disabled     # disabled | confirm（confirm 需输入完整 session id）
+    liveSettleTimeoutMs: 3000     # 运行中会话先归档停止、再等待的毫秒上限
+    panelEntryEnabled: true       # 是否在 DSH 侧栏显示 Threadloom 入口
 ```
 
 ## 安全边界

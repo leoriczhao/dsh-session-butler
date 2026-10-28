@@ -2,7 +2,7 @@
 
 > 输入：`research/2026-10-28-codex-desktop-ui-audit.md`（Codex 桌面 UI 实机）、`research/codex-session-management.md`（CLI/app-server 能力矩阵）、`research/dsh-session-management-v2.md`（DSH 七个能力面）、`docs/dsh-web-ui.md`（slot/挂载）、`research/2026-10-28-dsh-plugin-management-survey.md`（插件管理接入面，进行中）、`docs/decisions.md`（D-001…D-020）。
 >
-> 状态：草案，等待用户确认后进入实现。本文回答四个问题：**D3 长什么样、双用户怎么用、删除/回收站到底重不重要、如何与 DSH 已有插件管理 feature 结合。**
+> 状态：**已确认（用户 2026-10-28）**；D3.0 已落地（配置 volatile + 插件页 `plugins.*` 四贡献 + 健康快照），其余阶段按 §10 推进。本文回答四个问题：**D3 长什么样、双用户怎么用、删除/回收站到底重不重要、如何与 DSH 已有插件管理 feature 结合。**
 
 ---
 

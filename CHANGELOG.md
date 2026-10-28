@@ -6,7 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(nothing yet — post-0.1.2 work will be collected here.)_
+### Added — D3.0: 与 DSH 插件管理集成 + 功能级健康快照 (2026-10-28)
+
+- **配置表单**：配置字段全部声明为 DSH `.volatile()`，Plugins 页的插件行出现「配置」入口，`plugins.row.config` 渲染表单并写回 profile patch（单源，无第二配置存储）。新增 `liveSettleTimeoutMs`（默认 3000）与 `panelEntryEnabled`（默认 true）。
+- **插件页贡献**：`plugins.bundle.config` 显示状态区块，`plugins.detail.badge`/`plugins.detail.section` 提供健康徽标与诊断详情；宿主未声明 slot 时静默跳过（兼容 rc.2 组合）。
+- **侧栏入口可关**：客户端经 DSH `configForms` 读取 volatile 配置，`panelEntryEnabled=false` 时动态注销侧栏行，不影响主面板/命令/工具。
+- **健康快照**：`/session-butler/api/status` 扩展为 `{ ok, version, host, bridge, storage, backends, counts, errors }`；`service.health()` 探测回收站/会话目录可写性、可选后端能力，并保留最近 20 条桥错误；管理页轮询同一接口。
+- **测试**：配置 volatile 句柄、插件页 slot 注册/清理、健康快照与桥 status 断言；`pnpm run verify` 59 tests + 57 package checks 全绿。
+
+### Docs
+
+- `docs/d3-console-design.md` D3 设计定稿；`docs/decisions.md` D-021/D-022 标记 accepted（用户 2026-10-28 确认）；`docs/usage.md` 增加 DSH Plugins 页面配置说明。
 
 ## [0.1.2] - 2026-10-28
 

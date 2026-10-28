@@ -151,7 +151,7 @@ function optionalStringField(body: unknown, name: string): string | undefined {
 async function dispatch(service: SessionButlerService, method: BridgeMethod, body: unknown): Promise<unknown> {
   switch (method) {
     case 'status':
-      return service.config
+      return service.health()
     case 'list-trash':
       return service.listTrash()
     case 'list': {
@@ -219,6 +219,10 @@ async function handle(
   try {
     sendJson(response, 200, { ok: true, value: await dispatch(service, method, body) })
   } catch (error) {
+    service.recordError(
+      error instanceof ButlerError ? error.code : 'internal',
+      error instanceof Error ? error.message : String(error),
+    )
     if (error instanceof ButlerError && error.code === 'invalid-request') {
       sendProtocolError(response, 400, error.code, error.message)
     } else if (error instanceof ButlerError) {

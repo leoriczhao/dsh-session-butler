@@ -59,6 +59,8 @@ function makeHost({ reject = false } = {}) {
 function makeService() {
   return {
     config: { retentionDays: 30, cascadeSubagents: true, permanentDelete: 'confirm', workspaceAvailable: true },
+    async health() { return { ...this.config, ok: true, version: 'test' } },
+    recordError() {},
     async listTrash() { return { entries: [], orphans: 0, trashRoot: '/trash' } },
     async detail(sessionId) {
       return {

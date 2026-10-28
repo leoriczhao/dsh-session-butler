@@ -9,6 +9,7 @@
  * @module dsh-session-butler/host/service
  */
 
+import { accessSync, constants as fsConstants, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
@@ -58,6 +59,66 @@ export interface SessionButlerOptions {
   readonly now?: () => number
   /** How long to wait for `stopActivity` before refusing a running-session delete. */
   readonly liveSettleTimeoutMs?: number
+  /** Installed package version, shown in the health snapshot. */
+  readonly pluginVersion?: string
+  /** Capabilities the composition provides beyond this service's own ports. */
+  readonly capabilities?: () => ButlerCapabilities
+}
+
+/** Optional registries reported by the health snapshot. */
+export interface ButlerCapabilities {
+  readonly workspaceRegistry?: boolean
+  readonly sessionController?: boolean
+  readonly tools?: boolean
+  readonly commands?: boolean
+}
+
+/** One recent bridge/domain error kept for diagnostics. */
+export interface ButlerErrorRecord {
+  readonly code: string
+  readonly at: number
+  readonly message?: string
+}
+
+/** Functional health snapshot shared by the web page and the plugin manager. */
+export interface ButlerHealth {
+  readonly retentionDays: number
+  readonly cascadeSubagents: boolean
+  readonly permanentDelete: 'disabled' | 'confirm'
+  readonly workspaceAvailable: boolean
+  readonly ok: boolean
+  readonly version: string
+  readonly host: { readonly ok: boolean; readonly error?: string }
+  readonly bridge: { readonly ok: boolean; readonly mounted: boolean }
+  readonly storage: {
+    readonly trashWritable: boolean
+    readonly sessionsRootWritable: boolean
+    readonly trashCount: number
+  }
+  readonly backends: {
+    readonly sessionQuery: boolean
+    readonly workspaceRegistry: boolean
+    readonly sessionController: boolean
+    readonly tools: boolean
+    readonly commands: boolean
+  }
+  readonly counts: {
+    readonly sessions: number
+    readonly trashed: number
+    readonly live: number
+  }
+  readonly errors: readonly ButlerErrorRecord[]
+}
+
+/** Probe one directory for write access, optionally creating it first. */
+function directoryWritable(target: string, create: boolean): boolean {
+  try {
+    if (create) mkdirSync(target, { recursive: true })
+    accessSync(target, fsConstants.W_OK)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Result of moving sessions into the trash. */
@@ -219,6 +280,7 @@ function queryFailure(error: unknown, context: string): ButlerError {
 
 /** The M1 trash service exposed as `ctx.sessionButler`. */
 export class SessionButlerService {
+  private readonly recentErrors: ButlerErrorRecord[] = []
   private readonly locator: SessionLocator
   private readonly trashStore: TrashStore
   private readonly now: () => number
@@ -259,6 +321,71 @@ export class SessionButlerService {
       cascadeSubagents: this.options.cascadeSubagents,
       permanentDelete: this.options.permanentDelete,
       workspaceAvailable: this.workspace !== undefined,
+    }
+  }
+
+  /** Keep the most recent bridge/domain failures for the health snapshot. */
+  recordError(code: string, message?: string): void {
+    this.recentErrors.push({
+      code,
+      at: this.now(),
+      ...(message === undefined ? {} : { message }),
+    })
+    if (this.recentErrors.length > 20) this.recentErrors.shift()
+  }
+
+  /**
+   * Build the functional health snapshot shown on the management page and in
+   * the DSH Plugins page.
+   *
+   * Counts and storage probes are best-effort: an unreachable persistence
+   * service must not make the snapshot itself fail, because the snapshot is the
+   * surface used to diagnose exactly that condition.
+   * @returns the current health facts, including the last 20 recorded errors.
+   */
+  async health(): Promise<ButlerHealth> {
+    let sessions = 0
+    try {
+      sessions = (await this.options.persistence.list()).length
+    } catch {
+      // Reported as a zero count; the page still loads and shows other facts.
+    }
+    let trashed = 0
+    try {
+      trashed = (await this.trashStore.list()).entries.length
+    } catch {
+      // Same contract as the session count.
+    }
+    let live = 0
+    try {
+      live = this.sessions?.list?.().length ?? 0
+    } catch {
+      live = 0
+    }
+    const storage = {
+      trashWritable: directoryWritable(this.options.trashRoot, true),
+      sessionsRootWritable: directoryWritable(this.options.sessionsRoot, false),
+      trashCount: trashed,
+    }
+    const caps = this.options.capabilities?.() ?? {}
+    const backends = {
+      sessionQuery: true,
+      workspaceRegistry: caps.workspaceRegistry ?? this.workspace !== undefined,
+      sessionController: caps.sessionController ?? false,
+      tools: caps.tools ?? false,
+      commands: caps.commands ?? false,
+    }
+    const ok = storage.trashWritable && storage.sessionsRootWritable
+    return {
+      ...this.config,
+      ok,
+      version: this.options.pluginVersion ?? 'unknown',
+      host: { ok: true },
+      bridge: { ok: true, mounted: true },
+      storage,
+      backends,
+      counts: { sessions, trashed, live },
+      errors: [...this.recentErrors],
     }
   }
 
