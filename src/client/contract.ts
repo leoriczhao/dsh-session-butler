@@ -116,6 +116,12 @@ export interface ConfigFormLike<T> {
   set(field: string, value: unknown): Promise<boolean>
 }
 
+/** The page form the Plugins page owner hands to a configuration slot. */
+export interface ConfigPageFormLike {
+  readonly state: ConfigFormSnapshotLike<Record<string, unknown>>
+  mutate(ops: readonly ConfigPathOpLike[], expectedRevision?: number): Promise<boolean>
+}
+
 /** The `configForms` client service. */
 export interface ConfigFormsLike {
   get<T>(entryId: string): ConfigFormLike<T>

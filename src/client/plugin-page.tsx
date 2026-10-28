@@ -20,7 +20,7 @@ import type { ReactElement } from 'react'
 
 import { PLUGIN_ID, PLUGIN_ROW_ID } from '../shared/identity.js'
 import { callBridge } from './bridge.js'
-import type { BridgeStatus, ClientConfigLike, ConfigFormLike } from './contract.js'
+import type { BridgeStatus, ClientConfigLike, ConfigPageFormLike } from './contract.js'
 
 /** Key the plugin manager addresses a row's configuration page by. */
 export const ROW_CONFIG_KEY = `${PLUGIN_ID}#${PLUGIN_ROW_ID}`
@@ -37,7 +37,8 @@ interface PluginsSubjectLike {
 /** Props the plugin manager passes to a configuration page contribution. */
 interface ConfigViewPropsLike {
   readonly view?: 'summary' | 'page'
-  readonly form?: ConfigFormLike<ClientConfigLike> | undefined
+  /** DSH-owned page form: latest snapshot plus one atomic mutation queue. */
+  readonly form?: ConfigPageFormLike | undefined
   readonly t: Translate
 }
 
@@ -197,12 +198,13 @@ function FieldRow({ label, children }: { readonly label: string; readonly childr
  */
 export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
   const { view = 'page', form, t } = props
-  const [values, setValues] = useState<ClientConfigLike>(() => form?.getSnapshot().value ?? {})
+  const currentValue = form?.state.value as ClientConfigLike | undefined
+  const [values, setValues] = useState<ClientConfigLike>(() => currentValue ?? {})
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
-  useEffect(() => { setValues(form?.getSnapshot().value ?? {}) }, [form])
+  useEffect(() => { setValues(currentValue ?? {}) }, [currentValue])
   if (view === 'summary') return <p className="sb-plugin-note">{t('plugin.config.summary')}</p>
   if (form === undefined) return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('plugin.config.unavailable')}</p></div>
-  const snapshot = form.getSnapshot()
+  const snapshot = form.state
   if (snapshot.status === 'loading') return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('loading')}</p></div>
   if (snapshot.status === 'unavailable') return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('plugin.config.unavailable')}</p></div>
   const disabled = !snapshot.writable || state === 'saving'

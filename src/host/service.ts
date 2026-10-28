@@ -53,12 +53,13 @@ export interface SessionButlerOptions {
   readonly agents?: AgentsPort | (() => AgentsPort | undefined)
   /** Optional workspace services: absent in headless / ACP compositions. */
   readonly workspace?: WorkspaceRegistryPort | (() => WorkspaceRegistryPort | undefined)
-  readonly retentionDays: number
-  readonly cascadeSubagents: boolean
-  readonly permanentDelete: 'disabled' | 'confirm'
+  /** Volatile configuration values are passed as getters so settings edits apply without a remount. */
+  readonly retentionDays: number | (() => number)
+  readonly cascadeSubagents: boolean | (() => boolean)
+  readonly permanentDelete: 'disabled' | 'confirm' | (() => 'disabled' | 'confirm')
   readonly now?: () => number
   /** How long to wait for `stopActivity` before refusing a running-session delete. */
-  readonly liveSettleTimeoutMs?: number
+  readonly liveSettleTimeoutMs?: number | (() => number)
   /** Installed package version, shown in the health snapshot. */
   readonly pluginVersion?: string
   /** Capabilities the composition provides beyond this service's own ports. */
@@ -298,6 +299,27 @@ export class SessionButlerService {
     return typeof this.options.workspace === 'function' ? this.options.workspace() : this.options.workspace
   }
 
+  /** Current retention window; read live because the settings form edits a Volatile handle. */
+  private get retentionDays(): number {
+    return typeof this.options.retentionDays === 'function' ? this.options.retentionDays() : this.options.retentionDays
+  }
+
+  /** Current cascade default; read live for the same reason. */
+  private get cascadeSubagents(): boolean {
+    return typeof this.options.cascadeSubagents === 'function' ? this.options.cascadeSubagents() : this.options.cascadeSubagents
+  }
+
+  /** Current permanent-delete policy; read live for the same reason. */
+  private get permanentDelete(): 'disabled' | 'confirm' {
+    return typeof this.options.permanentDelete === 'function' ? this.options.permanentDelete() : this.options.permanentDelete
+  }
+
+  /** Current settle timeout; read live for the same reason. */
+  private get liveSettleTimeoutMs(): number {
+    if (typeof this.options.liveSettleTimeoutMs === 'function') return this.options.liveSettleTimeoutMs()
+    return this.options.liveSettleTimeoutMs ?? 3_000
+  }
+
   constructor(private readonly options: SessionButlerOptions) {
     this.locator = new SessionLocator(options.sessionsRoot)
     this.trashStore = new TrashStore(options.sessionsRoot, options.trashRoot)
@@ -317,9 +339,9 @@ export class SessionButlerService {
     readonly workspaceAvailable: boolean
   } {
     return {
-      retentionDays: this.options.retentionDays,
-      cascadeSubagents: this.options.cascadeSubagents,
-      permanentDelete: this.options.permanentDelete,
+      retentionDays: this.retentionDays,
+      cascadeSubagents: this.cascadeSubagents,
+      permanentDelete: this.permanentDelete,
       workspaceAvailable: this.workspace !== undefined,
     }
   }
@@ -645,8 +667,8 @@ export class SessionButlerService {
     const listing = await this.trashStore.list()
     const now = this.now()
     const entries = listing.entries.map((entry): TrashListEntry => {
-      const expiresAt = this.options.retentionDays > 0
-        ? entry.meta.deletedAt + this.options.retentionDays * DAY_MS
+      const expiresAt = this.retentionDays > 0
+        ? entry.meta.deletedAt + this.retentionDays * DAY_MS
         : null
       return {
         id: entry.meta.id,
@@ -684,7 +706,7 @@ export class SessionButlerService {
     }
     const rootRecord = await this.readRootRecord(sessionId)
     if (rootRecord.formatStatus === 'migration-required') throw migrationError([sessionId])
-    const cascade = options.cascade ?? this.options.cascadeSubagents
+    const cascade = options.cascade ?? this.cascadeSubagents
     const descendants = cascade ? await this.readDescendants(sessionId) : []
     const migrationBlocked = descendants
       .filter(record => record.formatStatus === 'migration-required')
@@ -756,7 +778,7 @@ export class SessionButlerService {
    * into `confirm`, and the caller must echo the exact session id).
    */
   async purge(sessionId: string, confirmId: string): Promise<PurgeResult> {
-    if (this.options.permanentDelete !== 'confirm') {
+    if (this.permanentDelete !== 'confirm') {
       throw new ButlerError(
         'permanent-delete-disabled',
         'permanent deletion is disabled; set permanentDelete: confirm in the plugin config to enable it',
@@ -828,7 +850,7 @@ export class SessionButlerService {
         cause: error,
       })
     }
-    const settleTimeoutMs = this.options.liveSettleTimeoutMs ?? 3_000
+    const settleTimeoutMs = this.liveSettleTimeoutMs
     const attempts = Math.max(1, Math.ceil(settleTimeoutMs / 100))
     for (let attempt = 0; attempt < attempts && this.isLive(sessionId); attempt += 1) {
       await sleep(100)

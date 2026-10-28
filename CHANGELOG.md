@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **健康快照**：`/session-butler/api/status` 扩展为 `{ ok, version, host, bridge, storage, backends, counts, errors }`；`service.health()` 探测回收站/会话目录可写性、可选后端能力，并保留最近 20 条桥错误；管理页轮询同一接口。
 - **测试**：配置 volatile 句柄、插件页 slot 注册/清理、健康快照与桥 status 断言；`pnpm run verify` 59 tests + 57 package checks 全绿。
 
+### Fixed — D3.0 real-browser verification (2026-10-28)
+
+- **行配置页崩溃**：`plugins.row.config` 的 owner 传入的是 `{ state, mutate }` 页面表单，而不是 `ConfigForm` 实例；首版调用 `form.getSnapshot()` 触发 `TypeError`，配置页只渲染出诊断区块。组件改为读 `form.state`、调用 `form.mutate(ops, snapshot.revision)`（隔离 0.2.2 + Playwright 发现）。
+- **配置不热生效**：volatile 配置值在 Host service 构造时被取成纯值，保存后 `/status` 仍返回旧值。service 的 4 个配置项（retention/cascade/permanentDelete/settle）改为**使用点读取**，由 `index.ts` 传 `() => readConfigValue(config.x)`；保存后无需重启即生效。
+- **真实浏览器验收**（隔离 `DSH_HOME` + Playwright Chromium，DSH 0.2.2-alpha.2）：bundle 页健康徽标/状态区块显示 **Healthy**；行配置页出现 5 个字段，保存 `trashRetentionDays: 45 → 60` 写回 profile `cordis.patch.yml` 且 `/session-butler/api/status` 立即返回 60；`panelEntryEnabled` 取消后侧栏行消失、恢复后出现；主管理页无 console/page error。证据：`docs/evidence/plugin-health-bundle.png`、`docs/evidence/plugin-row-config.png`。
+
 ### Docs
 
 - `docs/d3-console-design.md` D3 设计定稿；`docs/decisions.md` D-021/D-022 标记 accepted（用户 2026-10-28 确认）；`docs/usage.md` 增加 DSH Plugins 页面配置说明。

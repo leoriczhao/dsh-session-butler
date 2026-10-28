@@ -243,7 +243,7 @@ Threadloom（main 面板，keyed）
 ### 8.3 配置：`volatile` + row 页表单，单源写 profile patch
 
 - 现有 3 个 Config 字段（`trashRetentionDays` / `cascadeSubagents` / `permanentDelete`，`src/config.ts`）**必须补 `.volatile()`** 才会进入 DSH 的表单投影；P0 还要新增 `liveSettleTimeoutMs`、`panelEntryEnabled` 两个字段（后者控制侧栏入口是否注册）。
-- 表单来源：Plugins 页 row 页从 `ui-settings` 的 `ctx.configForms` 生成 `form: {state, mutate}`；我们只负责**渲染字段**（DSH 没有自动表单页面——`autoGenerate` 无客户端消费，`configure({auto:false})` 只翻标志）。
+- 表单来源：Plugins 页 row 页从 `ui-settings` 的 `ctx.configForms` 生成 `form: {state, mutate}`；我们只负责**渲染字段**（DSH 没有自动表单页面——`autoGenerate` 无客户端消费，`configure({auto:false})` 只翻标志）。注意 owner 传入的是 `{state, mutate}` 结构，不是 `ConfigForm` 实例（没有 `getSnapshot`）；`mutate(ops, revision)` 成功后由 owner 的 mirror 刷新 `state`。
 - 保存：`form.mutate([{path, value}], state.revision)` → config-editor 写 profile `cordis.patch.yml` → Loader 热应用。**不新建 HTTP 写接口、不建第二配置源**。
 - 降级：无 `ui-settings`（headless/旧组合）时 row 页无表单；`plugins.row.config` 组件显示只读配置 + 指向 profile patch 的说明，不报红。
 
@@ -314,7 +314,11 @@ interface ButlerStatus {
 | D3.3 | 标签/备注、内容搜索 opt-in、导出 MD、Cleanup、诊断、i18n/主题、审计 | 标签筛选可组合；导出内容正确；诊断可复制 |
 | 发布 | npm `0.2.0` + GitHub release + 市场元数据 | 安装/升级/回滚演练通过 |
 
-> **实现状态（2026-10-28）**：D3.0 代码已落地并通过 `pnpm run verify`（59 tests / 57 package checks）：5 个 volatile 配置字段、`plugins.row.config`/`bundle.config`/`detail.badge`/`detail.section` 四个贡献、`service.health()` + `/status`、`configForms` 门控侧栏入口。**待办**：在真实 0.2.2 profile 重载后做浏览器验收（配置入口出现、保存写回 patch、健康红黄绿），再进入 D3.1 Library。
+> **实现状态（2026-10-28 已验证）**：D3.0 已落地并通过 `pnpm run verify`（59 tests / 57 package checks）。在隔离 `DSH_HOME`（DSH 0.2.2-alpha.2）+ Playwright Chromium 实测：插件 bundle 页出现 **Healthy** 健康徽标与状态区块；行 `session-butler` 的「配置」入口可打开 5 项表单；保存 `trashRetentionDays: 45 → 60` 写回 profile `cordis.patch.yml`，且**无需重启**下 `/session-butler/api/status` 立即返回 60（volatile 配置按使用点读取）；`panelEntryEnabled` 取消勾选后侧栏「Session manager」立即消失、恢复勾选后出现；主管理页无 console/page error。
+>
+> 证据：`docs/evidence/plugin-health-bundle.png`、`docs/evidence/plugin-row-config.png`。
+>
+> **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此已运行进程里的 Host 代码仍要**重启 DSH 进程**才会生效。下一阶段 D3.1 Library。
 
 ---
 

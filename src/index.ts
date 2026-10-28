@@ -98,10 +98,11 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     trashRoot: homePath('session-butler', 'trash'),
     query,
     persistence,
-    retentionDays: readConfigValue(config.trashRetentionDays),
-    cascadeSubagents: readConfigValue(config.cascadeSubagents),
-    permanentDelete: readConfigValue(config.permanentDelete),
-    liveSettleTimeoutMs: readConfigValue(config.liveSettleTimeoutMs),
+    // Volatile handles: read through the getters so settings edits apply live.
+    retentionDays: () => readConfigValue(config.trashRetentionDays),
+    cascadeSubagents: () => readConfigValue(config.cascadeSubagents),
+    permanentDelete: () => readConfigValue(config.permanentDelete),
+    liveSettleTimeoutMs: () => readConfigValue(config.liveSettleTimeoutMs),
     pluginVersion: PLUGIN_VERSION,
     capabilities: () => ({
       workspaceRegistry: host.get<WorkspaceRegistryPort>('workspaceRegistry') !== undefined,
