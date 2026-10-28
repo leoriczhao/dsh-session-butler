@@ -6,7 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(nothing yet — post-0.1.0 work will be collected here.)_
+_(nothing yet — post-0.1.1 work will be collected here.)_
+
+## [0.1.1] - 2026-10-28
+
+### Fixed — native function calling rejected the whole request (2026-10-28)
+
+- The read-only tools registered the `defineTool` authoring property map as
+  `ToolDefinition.parameters`. DSH sends `parameters` to the provider verbatim,
+  so native function calling emitted an argument schema without an object root
+  and the provider rejected the **entire** request:
+  `Invalid schema for function 'session_butler_detail': schema must be a JSON
+  Schema of 'type: "object"', got 'type: null'`. The package activated and PTC
+  mode kept working, which masked the bug until a real Web-profile install.
+- New `src/host/schema.ts` compiles the per-property DSL (`required: true`)
+  into `{type:'object', properties, required?}` exactly like `defineTool`; both
+  tools register the compiled schema. The compiler fails loudly on DSL misuse
+  (object without `additionalProperties`, `required` inside `items`, `enum` on
+  an array, …) instead of emitting a broken wire schema.
+- Regression tests: new `tests/m3-schema.test.mjs` (4 cases: object root,
+  required promotion, nested array/object/enum compilation, misuse rejection)
+  and the tool-registration test now asserts the compiled shape (suite 52 → 56).
+- Verified against the real DSH `0.2.2-alpha.2` validators: both parameter
+  schemas pass `assertSupportedJsonSchema`, and PTC `jsonSchemaToTs` now emits
+  concrete typed arguments instead of `unknown`.
+- Docs: `architecture.md`, `decisions.md` (D-018 regression note) and the
+  packaging contract's pitfall list now record that third-party tools must
+  compile `parameters` themselves.
 
 ## [0.1.0] - 2026-10-28
 

@@ -125,9 +125,10 @@
 ### D-018 agent 工具：结构化注册 + 只读边界 · accepted
 
 - **背景**：已发布 npm 插件不能 import `@deepseek-ai/dsh-tools`（实现包不在 peer 依赖内），也不能依赖 Typert 的静态 codegen；工具必须按 `ctx.tools.register(definition)` 的结构化契约注册。
-- **决策**：`host/tools.ts` 手写完整的 tool definition：`name` / `description` / `parameters`（逐属性 `required:true`） / `output:{schema, render}` / `execute`。`output.schema` 只使用 DSH 支持的 JSON Schema 子集（`type/properties/required/additionalProperties/items/enum/const/oneOf`），并用真实 `assertSupportedJsonSchema` + `validateJsonSchemaValue` 校验过 schema 与真实输出值。
+- **决策**：`host/tools.ts` 手写完整的 tool definition：`name` / `description` / `parameters` / `output:{schema, render}` / `execute`。`parameters` 必须是**对象根 JSON Schema**：`host/schema.ts` 的 `compileParameterSchema` 把逐属性 `required:true` 的编写 DSL 编译成 `{type:'object', properties, required?}`（与 `defineTool` 的编译结果一致），因为 `ctx.tools.register` 把 `parameters` 原样发给 provider。`output.schema` 与编译后的 `parameters` 都只使用 DSH 支持的 JSON Schema 子集（`type/properties/required/additionalProperties/items/enum/const/oneOf`），并用真实 `assertSupportedJsonSchema` + `validateJsonSchemaValue` 校验过 schema 与真实输出值。
 - **边界**：只读 `session_butler_list` / `session_butler_detail`；**任何写操作都不注册为工具**，避免模型误删/误移。工具在 `ctx.inject(['tools'], …)` 中注册，缺失时插件其余能力不受影响。
 - **实现（M3）**：`registerButlerTools(tools, read)` 返回 disposer；测试直接对 `createListTool/createDetailTool` 断言参数校验、过滤转发、文本渲染与截断说明。
+- **回归（0.1.1，2026-10-28）**：首版把编写 DSL 的属性表直接当 `parameters` 注册，`ToolsService.register` 只校验 `output.schema`、不校验 `parameters`，于是插件能正常激活，但每次 native function calling 请求都被 provider 以 `Invalid schema for function ...: got 'type: null'` 整体拒绝。修复为注册前编译成对象根 schema，并加 `host/schema.ts` 单测锁住根 `type:'object'`、`required` 提升与 DSL 误用拒绝。
 
 ### D-019 列表/详情数据源：stat + 事件折叠，不依赖 projection cache · accepted
 

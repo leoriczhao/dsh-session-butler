@@ -12,6 +12,8 @@
  * @module dsh-session-butler/host/ports
  */
 
+import type { ButlerParameterJsonSchema } from './schema.js'
+
 /** Detached session identity metadata (rc.2 `dsh-session` SessionHeader). */
 export interface SessionHeaderLike {
   readonly id: string
@@ -192,17 +194,6 @@ export interface ConnectionPort {
   requestRejection(request: { headers: import('node:http').IncomingHttpHeaders }): 401 | 403 | undefined
 }
 
-/** One author-facing tool parameter (rc.2 `ParameterSchemaSpec` property). */
-export interface ButlerToolParameter {
-  readonly type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
-  readonly description?: string
-  readonly required?: true
-  readonly enum?: readonly (string | number | boolean | null)[]
-  readonly items?: ButlerToolParameter
-  readonly properties?: Readonly<Record<string, ButlerToolParameter>>
-  readonly additionalProperties?: boolean
-}
-
 /** One model-facing tool result block. */
 export interface ButlerToolTextContent {
   readonly type: 'text'
@@ -217,7 +208,8 @@ export interface ButlerToolTextContent {
 export interface ButlerToolDefinition {
   readonly name: string
   readonly description: string
-  readonly parameters: Readonly<Record<string, ButlerToolParameter>>
+  /** Object-rooted raw JSON Schema the Host sends to the model (not the authoring DSL). */
+  readonly parameters: ButlerParameterJsonSchema
   readonly output: {
     readonly schema: Readonly<Record<string, unknown>>
     render(args: unknown, value: unknown): readonly ButlerToolTextContent[]

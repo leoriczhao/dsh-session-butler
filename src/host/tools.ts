@@ -10,7 +10,9 @@
  * @module dsh-session-butler/host/tools
  */
 
-import type { ButlerToolDefinition, ButlerToolParameter, ToolsPort } from './ports.js'
+import type { ButlerToolDefinition, ToolsPort } from './ports.js'
+import type { ButlerToolParameter } from './schema.js'
+import { compileParameterSchema } from './schema.js'
 import type { SessionDetail } from './service.js'
 import type { SessionListEntry, SessionListResult } from './read-model.js'
 
@@ -94,7 +96,7 @@ function flattenDescendants(
 
 /** Build the `session_butler_list` definition. */
 export function createListTool(read: ButlerReadModel): ButlerToolDefinition {
-  const parameters: Record<string, ButlerToolParameter> = {
+  const parameterSpec: Record<string, ButlerToolParameter> = {
     query: {
       type: 'string',
       description: 'Case-insensitive substring of the session id or working directory.',
@@ -122,7 +124,7 @@ export function createListTool(read: ButlerReadModel): ButlerToolDefinition {
       'List DSH sessions newest first with id, title, working directory, age, and archived/subagent/live flags. '
       + 'Read-only. Use session_butler_detail with an exact id for counts, token usage, size, and lineage; '
       + 'this tool cannot delete or modify sessions.',
-    parameters,
+    parameters: compileParameterSchema(parameterSpec),
     output: {
       schema: {
         type: 'object',
@@ -197,7 +199,7 @@ export function createListTool(read: ButlerReadModel): ButlerToolDefinition {
 
 /** Build the `session_butler_detail` definition. */
 export function createDetailTool(read: ButlerReadModel): ButlerToolDefinition {
-  const parameters: Record<string, ButlerToolParameter> = {
+  const parameterSpec: Record<string, ButlerToolParameter> = {
     sessionId: {
       type: 'string',
       required: true,
@@ -210,7 +212,7 @@ export function createDetailTool(read: ButlerReadModel): ButlerToolDefinition {
       'Inspect one DSH session by exact id: title, working directory, preset, turn/step/message/tool counts, '
       + 'cumulative token usage, log size, and subagent lineage. Read-only; works for cold and live sessions, '
       + 'and reports partial enrichment for sessions awaiting migration.',
-    parameters,
+    parameters: compileParameterSchema(parameterSpec),
     output: {
       schema: {
         type: 'object',

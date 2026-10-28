@@ -174,7 +174,7 @@ purge(id):   trash 记录存在 → rm -rf trash/<id> → 删除记录（permane
 
 - 命令（M1 已实现）：`/session-butler list|trash|restore|purge`（`ctx.commands.register`），让无管理页的场景也能用；归档/取消归档直接复用官方 UI；
 - 工具（M3 已实现）：`session_butler_list` / `session_butler_detail` 只读；写操作**不**注册为 agent 工具，避免模型误删。
-  - 注册方式必须**结构化**：第三方已发布插件不能 import `@deepseek-ai/dsh-tools`，因此 `host/tools.ts` 手写 `{name, description, parameters, output:{schema, render}, execute}` 交给 `ctx.tools.register`；`parameters` 用逐属性 `required:true`，`output.schema` 用 DSH 支持的 JSON Schema 子集（已用真实 `assertSupportedJsonSchema` 校验）。
+  - 注册方式必须**结构化**：第三方已发布插件不能 import `@deepseek-ai/dsh-tools`，因此 `host/tools.ts` 手写 `{name, description, parameters, output:{schema, render}, execute}` 交给 `ctx.tools.register`；`parameters` 不是 `defineTool` 的逐属性 DSL，而是**编译后的对象根 JSON Schema**（`host/schema.ts` 把 `required:true` 属性表编译成 `{type:'object', properties, required?}`），`output.schema` 同样用 DSH 支持的 JSON Schema 子集（均已用真实 `assertSupportedJsonSchema` 校验）。裸属性表会被 native function calling 原样发给 provider 并报 `type: null`（0.1.1 修复）。
   - `list` 参数：`query?`/`cwd?`/`includeArchived?`/`includeSubagents?`/`limit?`；输出 `{total,truncated,sessions[]}`，render 为逐行文本（id、标题、cwd、相对时间、flags）。
   - `detail` 参数：`sessionId`（必填，精确 id）；输出 header、stats、tokens、size/eventCount、enrichment、扁平化后代（`depth`）；render 对有界后代做截断说明。
   - 工具在 `ctx.inject(['tools'], scope => …)` 里注册（headless 也可能没有 tools）；服务对象本身暴露只读方法，桥与工具共享同一实现。
