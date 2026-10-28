@@ -6,7 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(nothing yet — post-0.1.1 work will be collected here.)_
+_(nothing yet — post-0.1.2 work will be collected here.)_
+
+## [0.1.2] - 2026-10-28
+
+### Added — agent tools for "conversation → new conversation" (D-015)
+
+- `session_butler_new`: create an empty Session beside the caller, inheriting
+  its header cwd and agent preset. The caller's own session identity is the only
+  input; no arbitrary cwd, workspace id, or target session id is accepted.
+- `session_butler_fork`: branch the caller's current conversation into a new
+  independent Session (default: latest completed turn; optional exact inclusive
+  `atSeq`). Uses the Host `sessionController.fork` path — the same semantics
+  as the Web Remote `session.fork` — so the child appears in the Web sidebar
+  and Threadloom list and can be opened and continued.
+- Both tools are advertised only when the composition provides
+  `sessionController`; deletion and other destructive writes stay off the tool
+  face (D-003). This closes the tool-face gap D-015 had deferred past 0.1.0/0.1.1.
+- Tests: registration/execute/render coverage for both tools, including
+  caller-session rejection and `atSeq` validation (suite 57 → 59).
 
 ## [0.1.1] - 2026-10-28
 

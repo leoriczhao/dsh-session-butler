@@ -200,6 +200,24 @@ export interface ButlerToolTextContent {
   readonly text: string
 }
 
+/** Live Session object subset exposed to a tool call (header carries cwd/preset). */
+export interface ButlerSessionLike {
+  readonly id?: string
+  readonly header?: SessionHeaderLike
+}
+
+/**
+ * Tool execution context subset. The Host sets `agent` for every root model
+ * call; older/other compositions may omit it, so session-dependent tools must
+ * reject the call instead of guessing a working directory.
+ */
+export interface ButlerToolRunContext {
+  readonly signal?: AbortSignal
+  readonly agent?: {
+    readonly session?: ButlerSessionLike
+  }
+}
+
 /**
  * One model-facing tool definition, structurally compatible with rc.2
  * `ToolDefinition`. Threadloom builds this without importing `@deepseek-ai/dsh-tools`,
@@ -214,7 +232,62 @@ export interface ButlerToolDefinition {
     readonly schema: Readonly<Record<string, unknown>>
     render(args: unknown, value: unknown): readonly ButlerToolTextContent[]
   }
-  execute(args: unknown, exec: { readonly signal?: AbortSignal }): unknown
+  execute(args: unknown, exec: ButlerToolRunContext): unknown
+}
+
+/** Request subset of the Host `sessionController.create` Remote (new conversation). */
+export interface ButlerSessionCreateRequest {
+  readonly cwd: string
+  readonly agentPreset?: string
+}
+
+/** Successful creation result from `sessionController.create`. */
+export interface ButlerSessionCreateResult {
+  readonly sessionId: string
+  readonly agentPreset?: string
+}
+
+/**
+ * Creation-only dependency used by `session_butler_new`. The tool never accepts
+ * an arbitrary path or workspace id: it reuses the calling Session's own cwd and
+ * preset, so the new Session cannot escape the caller's workspace.
+ */
+export interface ButlerSessionCreation {
+  create(request: ButlerSessionCreateRequest): Promise<ButlerSessionCreateResult>
+}
+
+/** Request subset of the Host `sessionController.fork` Remote (one prefix → a new Session). */
+export interface ButlerSessionForkRequest {
+  /** Source Session to branch; Threadloom tools always pass the caller's own Session. */
+  readonly sessionId: string
+  /** Exact inclusive source event seq; omitted selects the latest completed-turn prefix. */
+  readonly atSeq?: number
+}
+
+/** Successful fork result from `sessionController.fork`. */
+export interface ButlerSessionForkResult {
+  readonly sessionId: string
+}
+
+/**
+ * Fork-only dependency used by `session_butler_fork`. The tool branches the
+ * calling Session and never accepts an arbitrary session id, so a model cannot
+ * fork a conversation it is not running in.
+ */
+export interface ButlerSessionForking {
+  fork(request: ButlerSessionForkRequest): Promise<ButlerSessionForkResult>
+}
+
+/**
+ * Optional `sessionController` capabilities advertised to the model. Both are
+ * non-destructive conversation creation; a composition without the Web session
+ * controller simply gets the read-only tools.
+ */
+export interface ButlerToolCapabilities {
+  /** New empty Session beside the caller (`session_butler_new`). */
+  readonly create?: ButlerSessionCreation
+  /** Branch of the caller's conversation (`session_butler_fork`). */
+  readonly fork?: ButlerSessionForking
 }
 
 /** The `tools` registry subset Threadloom consumes. */

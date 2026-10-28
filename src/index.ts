@@ -21,6 +21,9 @@ import { createButlerCommand } from './host/command.js'
 import type {
   AgentsPort,
   ButlerHostContext,
+  ButlerToolCapabilities,
+  ButlerSessionCreation,
+  ButlerSessionForking,
   CommandsPort,
   SessionPersistencePort,
   SessionQueryPort,
@@ -61,6 +64,21 @@ export const name = PLUGIN_ID
  */
 export const inject = ['sessionQuery', 'sessionPersistence', 'sessions', 'agents'] as const
 
+/**
+ * Resolve the optional `sessionController` Remote owner into tool capabilities.
+ *
+ * The Web profile mounts it; headless/ACP compositions may not. Both methods are
+ * probed individually so a partial controller still advertises what it supports.
+ */
+function sessionToolCapabilities(host: ButlerHostContext): ButlerToolCapabilities {
+  const controller = host.get<ButlerSessionCreation & ButlerSessionForking>('sessionController')
+  if (controller === undefined) return {}
+  return {
+    ...(typeof controller.create === 'function' ? { create: controller } : {}),
+    ...(typeof controller.fork === 'function' ? { fork: controller } : {}),
+  }
+}
+
 /** Mount the Threadloom Host half. */
 export function apply(ctx: Context, config: ThreadloomConfig): void {
   const host = ctx as unknown as ButlerHostContext
@@ -99,13 +117,19 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     host.inject(['tools'], (scope) => {
       const tools = scope.get<ToolsPort>('tools')
       if (tools === undefined) return
-      scope.effect(() => registerButlerTools(tools, service), 'session-butler: tools')
+      scope.effect(
+        () => registerButlerTools(tools, service, sessionToolCapabilities(scope)),
+        'session-butler: tools',
+      )
     })
   } else {
     mountBridge(host, service)
     const tools = host.get<ToolsPort>('tools')
     if (tools !== undefined) {
-      host.effect(() => registerButlerTools(tools, service), 'session-butler: tools')
+      host.effect(
+        () => registerButlerTools(tools, service, sessionToolCapabilities(host)),
+        'session-butler: tools',
+      )
     }
   }
 

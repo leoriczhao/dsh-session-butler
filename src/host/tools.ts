@@ -1,16 +1,25 @@
 /**
- * Read-only agent tools for session discovery and inspection.
+ * Agent tools for session discovery, creation, and branching.
  *
  * Definitions are built structurally, without importing `@deepseek-ai/dsh-tools`:
  * published third-party plugins register plain `ToolDefinition` objects on
  * `ctx.tools`, which is also what keeps this package free of DSH runtime
- * dependencies. The tools only read the Host read model; deletion stays on the
- * explicit Web UI and `/session-butler` surfaces.
+ * dependencies. The read tools only read the Host read model; `session_butler_new`
+ * and `session_butler_fork` fill the DSH tool-face gap for "conversation → new
+ * conversation" without accepting arbitrary paths or session ids. Deletion stays
+ * on the explicit Web UI and `/session-butler` surfaces (D-003).
  *
  * @module dsh-session-butler/host/tools
  */
 
-import type { ButlerToolDefinition, ToolsPort } from './ports.js'
+import type {
+  ButlerSessionCreation,
+  ButlerSessionForking,
+  ButlerToolCapabilities,
+  ButlerToolDefinition,
+  ButlerToolRunContext,
+  ToolsPort,
+} from './ports.js'
 import type { ButlerToolParameter } from './schema.js'
 import { compileParameterSchema } from './schema.js'
 import type { SessionDetail } from './service.js'
@@ -426,19 +435,157 @@ function toDetailWire(detail: SessionDetail): {
 }
 
 /**
- * Register the read-only tools.
+ * Build the `session_butler_new` definition.
+ *
+ * The tool deliberately has no cwd/workspace/session-id parameter: it creates
+ * an empty Session beside the caller, using the caller's own header cwd and
+ * preset. That keeps the new write surface to "spawn a sibling conversation"
+ * rather than "create anything anywhere".
+ */
+export function createNewSessionTool(create: ButlerSessionCreation): ButlerToolDefinition {
+  return {
+    name: 'session_butler_new',
+    description:
+      'Create a new empty DSH session in the caller\'s current working directory and inherit its agent preset. '
+      + 'The new session is independent (no copied messages), appears in the Web sidebar and Threadloom list, '
+      + 'and can be opened/continued by the user. Returns the new session id. This tool only creates a session; '
+      + 'it never accepts arbitrary paths or session ids and performs no deletion.',
+    parameters: compileParameterSchema({}),
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sessionId', 'cwd'],
+        properties: {
+          sessionId: { type: 'string' },
+          cwd: { type: 'string' },
+          agentPreset: { type: 'string' },
+        },
+      },
+      render(_args, value) {
+        const result = value as { sessionId: string; cwd: string; agentPreset?: string }
+        const preset = result.agentPreset === undefined ? '' : ` (preset: ${result.agentPreset})`
+        return [{ type: 'text', text: `created ${result.sessionId} in ${result.cwd}${preset}` }]
+      },
+    },
+    async execute(_args, exec: ButlerToolRunContext) {
+      const header = exec.agent?.session?.header
+      const cwd = header?.cwd
+      if (typeof cwd !== 'string' || cwd.length === 0) {
+        throw new Error('session_butler_new needs the caller session working directory; start the call from an agent session')
+      }
+      const agentPreset = header?.agentPreset
+      const result = await create.create({
+        cwd,
+        ...(agentPreset === undefined ? {} : { agentPreset }),
+      })
+      return {
+        sessionId: result.sessionId,
+        cwd,
+        ...(result.agentPreset === undefined ? {} : { agentPreset: result.agentPreset }),
+      }
+    },
+  }
+}
+
+/**
+ * Build the `session_butler_fork` definition.
+ *
+ * The tool forks the caller's own live Session through a completed-turn
+ * boundary and returns the new session id. It mirrors the Web Remote
+ * `session.fork` semantics (default: latest completed turn; optional exact
+ * inclusive `atSeq`) without accepting an arbitrary session id, so the model
+ * can only branch the conversation the call is running in.
+ */
+export function createForkSessionTool(fork: ButlerSessionForking): ButlerToolDefinition {
+  return {
+    name: 'session_butler_fork',
+    description:
+      'Branch the caller\'s current conversation into a new independent DSH session by copying events up to a completed turn. '
+      + 'Defaults to the latest completed turn; pass atSeq to branch through one exact source event seq. '
+      + 'The new session appears in the Web sidebar and Threadloom list and can be opened/continued by the user. '
+      + 'Returns the new session id. Only the caller\'s own session can be branched, and this tool never deletes anything.',
+    parameters: compileParameterSchema({
+      atSeq: {
+        type: 'integer',
+        description: 'Exact inclusive source event seq to branch through; omit for the latest completed turn.',
+      },
+    }),
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sessionId', 'sourceSessionId'],
+        properties: {
+          sessionId: { type: 'string' },
+          sourceSessionId: { type: 'string' },
+          atSeq: { type: 'integer' },
+        },
+      },
+      render(_args, value) {
+        const result = value as { sessionId: string; sourceSessionId: string; atSeq?: number }
+        const boundary = result.atSeq === undefined
+          ? 'the latest completed turn'
+          : `event ${result.atSeq}`
+        return [{
+          type: 'text',
+          text: `forked ${result.sourceSessionId} at ${boundary} → ${result.sessionId}`,
+        }]
+      },
+    },
+    async execute(args, exec: ButlerToolRunContext) {
+      const caller = exec.agent?.session
+      const sourceSessionId = caller?.id ?? caller?.header?.id
+      if (typeof sourceSessionId !== 'string' || sourceSessionId.length === 0) {
+        throw new Error('session_butler_fork needs the caller session; start the call from an agent session')
+      }
+      const atSeq = optionalEventSeq(argsRecord(args))
+      const result = await fork.fork({
+        sessionId: sourceSessionId,
+        ...(atSeq === undefined ? {} : { atSeq }),
+      })
+      return {
+        sessionId: result.sessionId,
+        sourceSessionId,
+        ...(atSeq === undefined ? {} : { atSeq }),
+      }
+    },
+  }
+}
+
+/** Optional exact inclusive event seq argument. */
+function optionalEventSeq(args: Record<string, unknown>): number | undefined {
+  const value = args.atSeq
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error('atSeq must be a non-negative safe integer (an existing session event seq)')
+  }
+  return value
+}
+
+/**
+ * Register the Host tools.
  * @param tools - Host tool registry.
  * @param read - Host read model (the service in production, a fake in tests).
- * @returns one disposer for both registrations.
+ * @param capabilities - optional `sessionController` creation/fork capabilities;
+ *   omitted methods are simply not advertised.
+ * @returns one disposer for every registration.
  */
-export function registerButlerTools(tools: ToolsPort, read: ButlerReadModel): () => void {
-  const disposers = [tools.register(createListTool(read)), tools.register(createDetailTool(read))]
+export function registerButlerTools(
+  tools: ToolsPort,
+  read: ButlerReadModel,
+  capabilities: ButlerToolCapabilities = {},
+): () => void {
+  const definitions = [createListTool(read), createDetailTool(read)]
+  if (capabilities.create !== undefined) definitions.push(createNewSessionTool(capabilities.create))
+  if (capabilities.fork !== undefined) definitions.push(createForkSessionTool(capabilities.fork))
+  const disposers = definitions.map(definition => tools.register(definition))
   return () => {
     for (const dispose of disposers) {
       try {
         dispose()
       } catch {
-        // Registration disposal is best-effort and must not mask the other one.
+        // Registration disposal is best-effort and must not mask the other ones.
       }
     }
   }

@@ -6,14 +6,14 @@
 > DeepSeek Harness 的会话管理插件 —— 把散落在各个 workspace 里的会话，织成一张可检索、可整理、可恢复的网。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**0.1.1 已构建并验证，待发布**（npm 上最新为 0.1.0；0.1.1 修复 native function calling 的 `parameters` 根 schema，M1–M4 功能不变）
+**状态**：**0.1.2 已构建并验证，待发布**（npm 上最新为 0.1.0；0.1.1 修复 native function calling 的 `parameters` 根 schema，0.1.2 补齐 `session_butler_new` / `session_butler_fork` 工具）
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
 
 ## 这是什么
 
-DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真正缺的是统一管理面和删除**。Threadloom 补齐这一层：
+DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真正缺的是统一管理面、删除，以及 agent tool 面的「会话 → 新会话」**。Threadloom 补齐这两层：
 
 | 能力 | 状态 |
 |---|---|
@@ -24,11 +24,12 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | 子代理级联删除（fork 永不级联） | ✅ M1 |
 | `/session-butler` 命令 | ✅ M1（list / trash / restore / purge） |
 | 回收站管理页 | ✅ M2（列表、恢复、二次确认后永久删除） |
-| 只读 agent 工具 | ✅ M3（`session_butler_list` / `session_butler_detail`；写操作不进模型面） |
+| Agent 工具：读取 | ✅ M3（`session_butler_list` / `session_butler_detail`） |
+| **Agent 工具：会话 → 新会话** | ✅ 0.1.2（`session_butler_new` 继承调用方 cwd/preset 新建空会话；`session_butler_fork` 从调用方会话按已完成轮分叉；只操作调用方会话，不暴露任意 session id；删除等破坏性写操作不进工具面） |
 | 批量操作 | ✅ M3（管理页多选 + 同源桥 `trash-many` / `restore-many`，逐项结果） |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ M0 已完成 |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1` 修复版已构建待 `npm publish`（需要账号 2FA）。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 56 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）与 `0.1.2`（工具面补齐）已构建待 `npm publish`（需要账号 2FA）。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 59 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 快速开始（开发）
 

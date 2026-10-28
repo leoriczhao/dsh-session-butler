@@ -82,12 +82,17 @@
 - **决策**：顶层 `engines.dsh` 声明 `>=0.2.1-rc.2 <0.3.0-0`（经 API 审计，见 D-002/Q7）；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
 - **影响**：DSH 升级时先跑 verify；发现 API 变化收紧范围而非放宽。
 
-### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · deferred（M3 收窄为只读）
+### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · accepted（0.1.2 实现）
 
 - **背景**：核实 `docs/tool-catalog.md` 与本进程 `Tool` inspect：DSH 没有任何 `session_create` / `session_fork` / `new_session` 工具。`subagent_fork` 只是「带已完成轮次 seed 的子代理委派」，结果回传父会话，不是用户可见/可切换的新会话；`fork` 存在于 Web Remote、Host `ctx.sessions.fork`（live only）与 GUI（会话页轮末分支 / 侧栏菜单 / 快捷键），但都不是 tool。
 - **决策（建议）**：Threadloom M3 注册工具：`session_butler_fork`（当前会话，默认最近完成轮，支持 `at_seq`）、`session_butler_new`（继承 cwd/workspace/preset 的空会话）、只读 `session_butler_list` / `session_butler_detail`。新会话必须出现在同 workspace 且可被 UI 切换；返回 child session id。删除等破坏性写操作仍不作为工具（D-003 不变）。
 - **技术路径**：复用 Remote fork 的实现路径（`sessionQuery.observeSession` → `buildForkSeed` → `ctx.agents.create` → `workspace.attachSession`），或 live 场景用 `ctx.sessions.fork` + resume；工具默认只操作调用方当前会话，任意 session id 需显式参数与用户确认。
 - **M3 收敛（2026-10-28）**：M3 只交付只读 `session_butler_list` / `session_butler_detail`（D-018）；`session_butler_fork` / `session_butler_new` **不进入 0.1.0**，留作二期候选。原因：写工具需要额外的会话切换/父会话授权语义（若允许任意 session id 则风险高），且当前工具面无 fork 属于产品缺口而非发布阻塞。D-015 的技术路径保留，待二期重新确认 ①–③。
+- **0.1.2 实现（2026-10-28，二期）**：产品复盘确认这是**必做项**（用户两次提醒「dsh 没有从会话新建会话的工具」「为啥要走 UI」），不再延后。
+  - 注册 `session_butler_new`（无参数；`sessionController.create({cwd, agentPreset})`，cwd/preset 取自 `exec.agent.session.header`）与 `session_butler_fork`（可选 `atSeq`；`sessionController.fork({sessionId, atSeq})`，行为同 Web Remote `session.fork`：默认最近已完成轮、精确包含边界、子会话出现在同 workspace 并可被 UI 切换）。
+  - 授权语义收敛为「**只操作调用方自己的会话**」：fork 的 source 固定为 `exec.agent.session.id`，new 不接受 cwd/workspace/目标 id 参数；模型不能借此操作任意会话或任意路径。
+  - 能力按组合探测：只有存在 `sessionController` 时才注册这两个工具（Web profile 有；headless/ACP 可能没有），两个方法分别探测；`tools` 服务缺失时全部工具不注册。
+  - 删除/回收站/恢复仍是破坏性写操作，继续不进入工具面（D-003 不变）。
 
 ### D-014 会话内「派生/旁支」的剩余缺口，列为二期候选 · proposed
 
@@ -98,7 +103,7 @@
   3. 没有 `/side` 式临时旁支（不落盘、用完即弃）；
   4. 没有「派生树/血缘」视图：普通 fork 在 HEAD 不写 `parentSession`，在已发布版虽写 parent 但 UI 只把 `origin==='subagent'` 当血缘（HEAD）。
 - **决策（建议）**：Threadloom MVP 不重做 fork；二期评估管理页里的「派生树视图 + 按轮分叉入口（复用官方 atSeq）」；`/side` 不承诺（需要上游会话生命周期支持）。
-- **待确认**：若用户把「从会话中新建会话」视为必做项，优先做 tool 面（`session_butler_fork`），GUI 入口直接用官方。
+- **已落地（0.1.2）**：用户确认「从会话中新建会话」是必做项；按 D-015 补齐 tool 面 `session_butler_fork` / `session_butler_new`，GUI 入口继续直接用官方。
 
 ### D-012 跨 workspace 移动不做 · accepted
 
@@ -126,7 +131,7 @@
 
 - **背景**：已发布 npm 插件不能 import `@deepseek-ai/dsh-tools`（实现包不在 peer 依赖内），也不能依赖 Typert 的静态 codegen；工具必须按 `ctx.tools.register(definition)` 的结构化契约注册。
 - **决策**：`host/tools.ts` 手写完整的 tool definition：`name` / `description` / `parameters` / `output:{schema, render}` / `execute`。`parameters` 必须是**对象根 JSON Schema**：`host/schema.ts` 的 `compileParameterSchema` 把逐属性 `required:true` 的编写 DSL 编译成 `{type:'object', properties, required?}`（与 `defineTool` 的编译结果一致），因为 `ctx.tools.register` 把 `parameters` 原样发给 provider。`output.schema` 与编译后的 `parameters` 都只使用 DSH 支持的 JSON Schema 子集（`type/properties/required/additionalProperties/items/enum/const/oneOf`），并用真实 `assertSupportedJsonSchema` + `validateJsonSchemaValue` 校验过 schema 与真实输出值。
-- **边界**：只读 `session_butler_list` / `session_butler_detail`；**任何写操作都不注册为工具**，避免模型误删/误移。工具在 `ctx.inject(['tools'], …)` 中注册，缺失时插件其余能力不受影响。
+- **边界**：`session_butler_list` / `session_butler_detail` 只读；**破坏性写操作（删除/回收站/恢复）不注册为工具**，避免模型误删/误移。0.1.2 按 D-015 增补**非破坏性**的 `session_butler_new` / `session_butler_fork`（只创建新会话，不删除/不移动旧会话）。工具在 `ctx.inject(['tools'], …)` 中注册，缺失时插件其余能力不受影响。
 - **实现（M3）**：`registerButlerTools(tools, read)` 返回 disposer；测试直接对 `createListTool/createDetailTool` 断言参数校验、过滤转发、文本渲染与截断说明。
 - **回归（0.1.1，2026-10-28）**：首版把编写 DSL 的属性表直接当 `parameters` 注册，`ToolsService.register` 只校验 `output.schema`、不校验 `parameters`，于是插件能正常激活，但每次 native function calling 请求都被 provider 以 `Invalid schema for function ...: got 'type: null'` 整体拒绝。修复为注册前编译成对象根 schema，并加 `host/schema.ts` 单测锁住根 `type:'object'`、`required` 提升与 DSL 误用拒绝。
 

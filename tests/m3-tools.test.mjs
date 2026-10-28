@@ -186,3 +186,130 @@ test('session_butler_detail renders partial enrichment and omits absent figures'
   assert.doesNotMatch(text, /lineage:/)
   assert.doesNotMatch(text, /descendants:/)
 })
+
+test('registerButlerTools adds session_butler_new only when a session creator is available', async () => {
+  const registered = []
+  const tools = {
+    register(definition) {
+      registered.push(definition)
+      return () => {}
+    },
+  }
+  const created = []
+  const create = {
+    async create(request) {
+      created.push(request)
+      return { sessionId: 'session-child-new', agentPreset: request.agentPreset }
+    },
+  }
+  registerButlerTools(tools, makeReadModel(), { create })
+  assert.deepEqual(registered.map(tool => tool.name), [
+    'session_butler_list',
+    'session_butler_detail',
+    'session_butler_new',
+  ])
+  const newTool = registered[2]
+  assert.equal(newTool.parameters.type, 'object')
+  assert.deepEqual(newTool.parameters.properties, {})
+  assert.equal(newTool.parameters.required, undefined)
+  assert.equal(newTool.output.schema.required.includes('sessionId'), true)
+
+  const value = await newTool.execute({}, {
+    agent: { session: { id: 'session-caller', header: { id: 'session-caller', cwd: '/work/proj', agentPreset: 'build' } } },
+  })
+  assert.deepEqual(created, [{ cwd: '/work/proj', agentPreset: 'build' }])
+  assert.deepEqual(value, {
+    sessionId: 'session-child-new',
+    cwd: '/work/proj',
+    agentPreset: 'build',
+  })
+  const rendered = newTool.output.render({}, value)
+  assert.equal(rendered[0].text, 'created session-child-new in /work/proj (preset: build)')
+
+  await assert.rejects(
+    () => newTool.execute({}, {}),
+    /needs the caller session working directory/,
+  )
+  await assert.rejects(
+    () => newTool.execute({}, { agent: { session: { header: { id: 'session-caller' } } } }),
+    /needs the caller session working directory/,
+  )
+})
+
+test('registerButlerTools adds session_butler_fork only when a session forker is available', async () => {
+  const registered = []
+  const tools = {
+    register(definition) {
+      registered.push(definition)
+      return () => {}
+    },
+  }
+  const forked = []
+  const fork = {
+    async fork(request) {
+      forked.push(request)
+      return { sessionId: 'session-child-fork' }
+    },
+  }
+  registerButlerTools(tools, makeReadModel(), { fork })
+  assert.deepEqual(registered.map(tool => tool.name), [
+    'session_butler_list',
+    'session_butler_detail',
+    'session_butler_fork',
+  ])
+  const forkTool = registered[2]
+  assert.equal(forkTool.parameters.type, 'object')
+  assert.equal(forkTool.parameters.properties.atSeq.type, 'integer')
+  assert.equal(forkTool.parameters.required, undefined)
+  assert.equal(forkTool.output.schema.required.includes('sessionId'), true)
+  assert.equal(forkTool.output.schema.required.includes('sourceSessionId'), true)
+
+  const value = await forkTool.execute({}, {
+    agent: { session: { id: 'session-caller', header: { id: 'session-caller', cwd: '/work/proj' } } },
+  })
+  assert.deepEqual(forked, [{ sessionId: 'session-caller' }])
+  assert.deepEqual(value, { sessionId: 'session-child-fork', sourceSessionId: 'session-caller' })
+  assert.equal(
+    forkTool.output.render({}, value)[0].text,
+    'forked session-caller at the latest completed turn → session-child-fork',
+  )
+
+  const withSeq = await forkTool.execute({ atSeq: 12 }, {
+    agent: { session: { id: 'session-caller', header: { id: 'session-caller' } } },
+  })
+  assert.deepEqual(forked.at(-1), { sessionId: 'session-caller', atSeq: 12 })
+  assert.deepEqual(withSeq, { sessionId: 'session-child-fork', sourceSessionId: 'session-caller', atSeq: 12 })
+  assert.equal(
+    forkTool.output.render({ atSeq: 12 }, withSeq)[0].text,
+    'forked session-caller at event 12 → session-child-fork',
+  )
+
+  await assert.rejects(
+    () => forkTool.execute({ atSeq: -1 }, { agent: { session: { id: 'session-caller' } } }),
+    /non-negative safe integer/,
+  )
+  await assert.rejects(
+    () => forkTool.execute({}, {}),
+    /needs the caller session/,
+  )
+})
+
+test('registerButlerTools advertises both creation tools when the composition supports them', () => {
+  const registered = []
+  const tools = {
+    register(definition) {
+      registered.push(definition)
+      return () => {}
+    },
+  }
+  registerButlerTools(tools, makeReadModel(), {
+    create: { async create(request) { return { sessionId: 'session-new', ...(request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset }) } } },
+    fork: { async fork() { return { sessionId: 'session-fork' } } },
+  })
+  assert.deepEqual(registered.map(tool => tool.name), [
+    'session_butler_list',
+    'session_butler_detail',
+    'session_butler_new',
+    'session_butler_fork',
+  ])
+})
