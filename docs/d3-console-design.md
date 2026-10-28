@@ -314,6 +314,8 @@ interface ButlerStatus {
 | D3.3 | 标签/备注、内容搜索 opt-in、导出 MD、Cleanup、诊断、i18n/主题、审计 | 标签筛选可组合；导出内容正确；诊断可复制 |
 | 发布 | npm `0.2.0` + GitHub release + 市场元数据 | 安装/升级/回滚演练通过 |
 
+> **实现状态（2026-10-28）**：D3.0 代码已落地并通过 `pnpm run verify`（59 tests / 57 package checks）：5 个 volatile 配置字段、`plugins.row.config`/`bundle.config`/`detail.badge`/`detail.section` 四个贡献、`service.health()` + `/status`、`configForms` 门控侧栏入口。**待办**：在真实 0.2.2 profile 重载后做浏览器验收（配置入口出现、保存写回 patch、健康红黄绿），再进入 D3.1 Library。
+
 ---
 
 ## 11. 风险与开放问题
