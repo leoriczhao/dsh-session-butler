@@ -9,7 +9,7 @@
 - Node ≥ 24.9，pnpm 11.x（仓库内 `packageManager`/CI 已固定），npm 账号已登录（`npm whoami`）。
 - **不要在 DSH profile 目录里手工 `pnpm add` / 改 `package.json`**：安装统一走 `dsh plugin` 或 `plugin_manager`。
 - 发布前确认工作区干净：`git status`，版本号与 `CHANGELOG.md` 一致。
-- 发布前补齐 `package.json` 元数据：`author`（当前为 `Threadloom contributors`）、`repository`/`homepage`/`bugs`（当前省略，发布前按实际 GitHub 仓库补上）。这些字段不参与运行，但影响 npm 页面、市场索引与"从仓库详情回退"的插件详情。
+- `package.json` 元数据已补齐：`author = leoric`、`repository = git+https://github.com/leoriczhao/dsh-session-butler.git`、`homepage`/`bugs` 指向同一仓库。这些字段不参与运行，但影响 npm 页面、市场索引与「从仓库详情回退」的插件详情。
 - README 里指向 `docs/architecture.md` 等**未随包发布**文件的链接，发布前要么改成 GitHub 绝对链接，要么把对应文档加入 `files`（npm 页面只展示包内文件；`meta.detail` 指向的 `docs/usage.md` 已随包发布）。
 - 发布前复核 `engines.dsh` 下限：npm `latest` 目前是 `0.2.1-rc.2`（不是 rc.3）。按实际用到的 API（rename/pin/archive/fork/create 等）在 rc.2 上验证；兼容则降到 `>=0.2.1-rc.2`，否则保留 rc.3 下限并在 README 说明。
 
@@ -146,7 +146,7 @@ declared`），修复见 `CHANGELOG.md` 的 “real-browser activation” 段；
 npm publish          # prepack 自动 typecheck + build；scoped 包需 --access public（本项目 unscoped）
 ```
 
-发布后核对 registry 元数据（**`dsh` 字段必须在 npm 上可见**，更新检查依赖它）：
+发布后核对 registry 元数据（**`dsh` 字段必须在 npm 上可见**，更新检查依赖它；`repository`/`homepage`/`bugs` 应显示本仓库）：
 
 ```bash
 npm view dsh-session-butler@<version> name version engines peerDependencies dsh license repository

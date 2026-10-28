@@ -3,7 +3,7 @@
 > DeepSeek Harness 的会话管理插件 —— 把散落在各个 workspace 里的会话，织成一张可检索、可整理、可恢复的网。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**foundation + M1 + M2 + M3（删除核心 + `/session-butler` 命令 + Web 管理页/同源桥 + 只读 agent 工具 + 批量操作 + 详情补全均已实现；M4 本地发布验收已通过，因 npm 凭据与仓库元数据未补齐而暂不发布）**
+**状态**：**foundation + M1 + M2 + M3（删除核心 + `/session-butler` 命令 + Web 管理页/同源桥 + 只读 agent 工具 + 批量操作 + 详情补全均已实现；M4 本地发布验收已通过，因 npm 凭据未登录而暂不发布）**
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
@@ -25,7 +25,7 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | 批量操作 | ✅ M3（管理页多选 + 同源桥 `trash-many` / `restore-many`，逐项结果） |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ M0 已完成 |
 
-> 当前 `0.1.0` 的工作区已包含可发布的包骨架、M1 删除核心、M2 Web 管理页与 M3 工具/批量/详情。M4 本地验收（真实浏览器、隔离 `DSH_HOME` 写入闭环、干净目录安装）已完成；剩余阻塞是 npm 登录与 `repository`/`homepage`/`bugs` 元数据，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 52 tests + npm pack 契约）。发布门禁与证据见 [`docs/decisions.md`](docs/decisions.md) 和 [`docs/publishing.md`](docs/publishing.md)。
+> 当前 `0.1.0` 的工作区已包含可发布的包骨架、M1 删除核心、M2 Web 管理页与 M3 工具/批量/详情。M4 本地验收（真实浏览器、隔离 `DSH_HOME` 写入闭环、干净目录安装）已完成；代码已托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，剩余阻塞只有 npm 登录，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 52 tests + npm pack 契约）。发布门禁与证据见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 快速开始（开发）
 
@@ -69,16 +69,16 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 
 | 文档 | 内容 |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
-| [`docs/decisions.md`](docs/decisions.md) | 决策记录（D-001…D-020）+ 已收敛问题 + 发布门禁 |
-| [`docs/publishing.md`](docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
-| [`docs/usage.md`](docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
-| [`research/dsh-session-management-v2.md`](research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
-| [`research/v2-verification.md`](research/v2-verification.md) | v2 的**独立对抗式复核**：15 条 claim（13 CONFIRMED / 1 WRONG / 1 NEEDS-NUANCE）+ 逐条证据 + 复核限制 |
-| [`docs/dsh-host-apis.md`](docs/dsh-host-apis.md) | ⛔ 第一版调研（已被 v2 取代，仅存档源码索引） |
-| [`docs/dsh-web-ui.md`](docs/dsh-web-ui.md) | ⛔ 第一版调研（已被 v2 取代，仅存档 slot/源码索引） |
-| [`docs/dsh-packaging-contract.md`](docs/dsh-packaging-contract.md) | 调研：npm 打包/安装/校验契约与 25 条坑位 |
-| [`research/codex-session-management.md`](research/codex-session-management.md) | 产品对标：Codex thread 管理 |
+| [`docs/architecture.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
+| [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-020）+ 已收敛问题 + 发布门禁 |
+| [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
+| [`docs/usage.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
+| [`research/dsh-session-management-v2.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
+| [`research/v2-verification.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/v2-verification.md) | v2 的**独立对抗式复核**：15 条 claim（13 CONFIRMED / 1 WRONG / 1 NEEDS-NUANCE）+ 逐条证据 + 复核限制 |
+| [`docs/dsh-host-apis.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/dsh-host-apis.md) | ⛔ 第一版调研（已被 v2 取代，仅存档源码索引） |
+| [`docs/dsh-web-ui.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/dsh-web-ui.md) | ⛔ 第一版调研（已被 v2 取代，仅存档 slot/源码索引） |
+| [`docs/dsh-packaging-contract.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/dsh-packaging-contract.md) | 调研：npm 打包/安装/校验契约与 25 条坑位 |
+| [`research/codex-session-management.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/codex-session-management.md) | 产品对标：Codex thread 管理 |
 
 ## 决策状态
 

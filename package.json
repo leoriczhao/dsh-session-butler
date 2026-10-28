@@ -7,7 +7,10 @@
   "types": "lib/types/index.d.ts",
   "icon": "icon.svg",
   "license": "MIT",
-  "author": "Threadloom contributors",
+  "author": {
+    "name": "leoric",
+    "url": "https://github.com/leoriczhao"
+  },
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -91,5 +94,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leoriczhao/dsh-session-butler.git"
+  },
+  "homepage": "https://github.com/leoriczhao/dsh-session-butler#readme",
+  "bugs": {
+    "url": "https://github.com/leoriczhao/dsh-session-butler/issues"
   }
 }

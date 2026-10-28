@@ -169,4 +169,5 @@
 - [x] locale（zh/en）、icon、detail 文档在插件页正确显示：隔离 profile 的 Plugins 页实测 Threadloom 图标/名称/版本/id/描述，详情页渲染 `docs/usage.md` 全文；管理页与导航在 zh/en 浏览器 locale 下均正常（证据 `docs/evidence/plugin-detail.png`）。
 - [x] running/archived/subagent 边界：M1 running 拒绝 + 归档不级联、M3 detail 子代理 lineage 已覆盖；`fork` 按 D-015 延期，不阻塞 0.1.0。
 - [x] CHANGELOG、版本号 `0.1.0`、`engines.dsh` 与本地 DSH `0.2.1-rc.3` 一致；`npm latest` 仍为 rc.2 且下限覆盖 rc.2。
-- [ ] 发布阻塞项：`npm whoami` 未登录；`package.json` 的 `author`/`repository`/`homepage`/`bugs` 仍为占位/省略，待用户提供 npm 账号与仓库 URL。
+- [x] 仓库与元数据：源码已托管到 `https://github.com/leoriczhao/dsh-session-butler`，`package.json` 补齐 `author`/`repository`/`homepage`/`bugs`，README 文档链接改为 GitHub 绝对地址。
+- [ ] 发布阻塞项：`npm whoami` 未登录，待用户在本机 `npm login` 后执行发布与 registry 复验。
