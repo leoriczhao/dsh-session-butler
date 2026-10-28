@@ -25,15 +25,27 @@ import type {
   SessionPersistencePort,
   SessionQueryPort,
   SessionsPort,
+  ToolsPort,
   WorkspaceRegistryPort,
 } from './host/ports.js'
 import { SessionButlerService } from './host/service.js'
+import { registerButlerTools } from './host/tools.js'
 import { API_PREFIX, PANEL_ID, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
 
 export { Config, PLUGIN_ID, PLUGIN_ROW_ID, PANEL_ID, API_PREFIX }
 export type { ThreadloomConfig }
 export { SessionButlerService } from './host/service.js'
-export type { TrashListEntry, TrashListResult, TrashResult } from './host/service.js'
+export type {
+  BatchItemResult,
+  BatchResult,
+  DetailEnrichment,
+  SessionDetail,
+  SessionHeaderSnapshot,
+  TrashListEntry,
+  TrashListResult,
+  TrashResult,
+} from './host/service.js'
+export { registerButlerTools } from './host/tools.js'
 export { ButlerError } from './shared/errors.js'
 export type { ButlerErrorCode } from './shared/errors.js'
 
@@ -43,8 +55,8 @@ export const name = PLUGIN_ID
 /**
  * Host services this half cannot work without.
  *
- * All five are base-bundle services (audited against the rc.2 release). Optional
- * capabilities — `workspaceRegistry`, `subagent` enumeration, and the command
+ * All four are base-bundle services (audited against the rc.2 release). Optional
+ * capabilities — `workspaceRegistry`, the tool registry, and the command
  * registry — are probed in `apply` instead.
  */
 export const inject = ['sessionQuery', 'sessionPersistence', 'sessions', 'agents'] as const
@@ -84,8 +96,17 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
   // everywhere, and the HTTP bridge appears exactly when a Web app is present.
   if (typeof host.inject === 'function') {
     host.inject(['webServer', 'connection'], scope => mountBridge(scope, service))
+    host.inject(['tools'], (scope) => {
+      const tools = scope.get<ToolsPort>('tools')
+      if (tools === undefined) return
+      scope.effect(() => registerButlerTools(tools, service), 'session-butler: tools')
+    })
   } else {
     mountBridge(host, service)
+    const tools = host.get<ToolsPort>('tools')
+    if (tools !== undefined) {
+      host.effect(() => registerButlerTools(tools, service), 'session-butler: tools')
+    }
   }
 
   const commands = host.get<CommandsPort>('commands')

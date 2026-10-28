@@ -60,8 +60,29 @@ function makeService() {
   return {
     config: { retentionDays: 30, cascadeSubagents: true, permanentDelete: 'confirm', workspaceAvailable: true },
     async listTrash() { return { entries: [], orphans: 0, trashRoot: '/trash' } },
-    async detail(sessionId) { return { id: sessionId, headerSnapshot: { id: sessionId }, descendantIds: ['child-1'] } },
+    async detail(sessionId) {
+      return {
+        id: sessionId,
+        headerSnapshot: { id: sessionId },
+        descendantIds: ['child-1'],
+        enrichment: { status: 'partial', reason: 'read-failed' },
+        stats: { eventCount: 4, sizeBytes: 512, turns: 1 },
+        lineage: { complete: true, ancestors: [], descendants: [] },
+      }
+    },
     calls: [],
+    async listSessions(filters) {
+      this.calls.push(['list', filters])
+      return { sessions: [{ id: 'session-a', createdAt: 1, archived: false, pinned: false, subagent: false, live: false }], total: 1, truncated: false }
+    },
+    async trashMany(sessionIds, options) {
+      this.calls.push(['trash-many', sessionIds, options])
+      return { items: sessionIds.map(id => ({ id, ok: true, moved: [id] })), moved: sessionIds, failed: [] }
+    },
+    async restoreMany(sessionIds) {
+      this.calls.push(['restore-many', sessionIds])
+      return { items: sessionIds.map(id => ({ id, ok: true, moved: [id] })), moved: sessionIds, failed: [] }
+    },
     async trash(sessionId, options) { this.calls.push(['trash', sessionId, options]); return { trashed: [sessionId], trashRoot: '/trash' } },
     async restore(sessionId) { return { restored: sessionId, path: '/restored' } },
     async purge(sessionId, confirmId) {
@@ -161,4 +182,80 @@ test('the connection fence refuses before dispatch', async () => {
 test('headless compositions do not mount a route', () => {
   const host = { get: () => undefined, effect: () => {}, logger: { warn() {} } }
   mountBridge(host, makeService())
+})
+
+test('list forwards filters and returns the page envelope', async () => {
+  const { host, routes } = makeHost()
+  const service = makeService()
+  mountBridge(host, service)
+  const response = await call(routes[0], fakeRequest({
+    url: '/session-butler/api/list',
+    body: { query: ' release ', includeArchived: true, limit: 10 },
+  }))
+  assert.equal(response.statusCode, 200)
+  const payload = JSON.parse(response.body)
+  assert.equal(payload.ok, true)
+  assert.equal(payload.value.total, 1)
+  assert.deepEqual(service.calls, [['list', { query: 'release', includeArchived: true, limit: 10 }]])
+
+  const invalid = await call(routes[0], fakeRequest({ url: '/session-butler/api/list', body: { limit: 'ten' } }))
+  assert.equal(invalid.statusCode, 400)
+  assert.equal(JSON.parse(invalid.body).error.code, 'invalid-request')
+})
+
+test('detail returns the enriched read model', async () => {
+  const { host, routes } = makeHost()
+  mountBridge(host, makeService())
+  const response = await call(routes[0], fakeRequest({
+    url: '/session-butler/api/detail',
+    body: { sessionId: 'session-a' },
+  }))
+  const value = JSON.parse(response.body).value
+  assert.deepEqual(value.enrichment, { status: 'partial', reason: 'read-failed' })
+  assert.equal(value.stats.eventCount, 4)
+  assert.deepEqual(value.lineage, { complete: true, ancestors: [], descendants: [] })
+})
+
+test('batch trash and restore accept id arrays and apply the cascade default', async () => {
+  const { host, routes } = makeHost()
+  const service = makeService()
+  mountBridge(host, service)
+
+  const trashed = await call(routes[0], fakeRequest({
+    url: '/session-butler/api/trash-many',
+    body: { sessionIds: ['session-a', 'session-b'] },
+  }))
+  assert.equal(trashed.statusCode, 200)
+  assert.equal(JSON.parse(trashed.body).value.moved.length, 2)
+
+  await call(routes[0], fakeRequest({
+    url: '/session-butler/api/trash-many',
+    body: { sessionIds: ['session-c'], cascade: false },
+  }))
+  const restored = await call(routes[0], fakeRequest({
+    url: '/session-butler/api/restore-many',
+    body: { sessionIds: ['session-a'] },
+  }))
+  assert.equal(restored.statusCode, 200)
+  assert.deepEqual(service.calls, [
+    ['trash-many', ['session-a', 'session-b'], { cascade: true }],
+    ['trash-many', ['session-c'], { cascade: false }],
+    ['restore-many', ['session-a']],
+  ])
+})
+
+test('batch payload validation rejects missing, empty and mixed arrays', async () => {
+  const { host, routes } = makeHost()
+  mountBridge(host, makeService())
+  for (const body of [
+    {},
+    { sessionIds: [] },
+    { sessionIds: 'session-a' },
+    { sessionIds: ['session-a', 42] },
+    { sessionIds: [''] },
+  ]) {
+    const response = await call(routes[0], fakeRequest({ url: '/session-butler/api/trash-many', body }))
+    assert.equal(response.statusCode, 400, JSON.stringify(body))
+    assert.equal(JSON.parse(response.body).error.code, 'invalid-request')
+  }
 })

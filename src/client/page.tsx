@@ -14,18 +14,128 @@ import type { ReactElement } from 'react'
 
 import { BridgeError } from './bridge.js'
 import type {
+  BatchResultLike,
   BridgeStatus,
+  LineageNodeLike,
   SessionButlerPageProps,
   SessionDetailLike,
+  SessionStatsLike,
   SessionSummaryLike,
   TrashEntryLike,
   WorkspaceViewLike,
 } from './contract.js'
 
+/** Host-enforced ceiling for one batch request. */
+const MAX_BATCH_SIZE = 50
+
 /** One destructive-action dialog. */
 type Dialog =
   | { readonly kind: 'trash'; readonly row: SessionSummaryLike; readonly detail: SessionDetailLike; readonly cascade: boolean }
+  | { readonly kind: 'batch-trash'; readonly ids: readonly string[]; readonly descendants: number; readonly cascade: boolean }
+  | { readonly kind: 'detail'; readonly detail: SessionDetailLike }
   | { readonly kind: 'purge'; readonly entry: TrashEntryLike }
+
+/** Human-readable byte count. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Depth-first flattening of lineage nodes, bounded by the dialog. */
+function flattenLineage(nodes: readonly LineageNodeLike[], depth = 1): Array<{ node: LineageNodeLike; depth: number }> {
+  const rows: Array<{ node: LineageNodeLike; depth: number }> = []
+  for (const node of nodes) {
+    rows.push({ node, depth })
+    rows.push(...flattenLineage(node.descendants, depth + 1))
+  }
+  return rows
+}
+
+/** One `label: value` row inside the detail dialog. */
+function DetailRow({ label, children }: { readonly label: string; readonly children: React.ReactNode }): ReactElement {
+  return (
+    <div className="sb-detail-row">
+      <span className="sb-detail-label">{label}</span>
+      <span className="sb-detail-value">{children}</span>
+    </div>
+  )
+}
+
+/** Detail dialog body: header identity, folded figures, tokens, size, and lineage. */
+export function SessionDetailView({ detail, t }: { readonly detail: SessionDetailLike; readonly t: SessionButlerPageProps['t'] }): ReactElement {
+  const header = detail.headerSnapshot
+  const stats: SessionStatsLike | undefined = detail.stats
+  const facts = [
+    detail.live ? t('detail.live') : '',
+    detail.formatStatus === undefined ? '' : t('detail.format', { status: detail.formatStatus }),
+  ].filter(fact => fact.length > 0)
+  const descendants = flattenLineage(detail.lineage.descendants)
+  return (
+    <>
+      <div className="sb-detail-grid">
+        <DetailRow label={t('detail.idLabel')}><span className="sb-mono">{detail.id}</span></DetailRow>
+        {header.createdAt !== undefined && <DetailRow label={t('detail.createdLabel')}>{formatTime(header.createdAt)}</DetailRow>}
+        {header.cwd !== undefined && <DetailRow label={t('detail.cwdLabel')}><span className="sb-mono">{header.cwd}</span></DetailRow>}
+        {header.agentPreset !== undefined && <DetailRow label={t('detail.presetLabel')}>{header.agentPreset}</DetailRow>}
+        {facts.length > 0 && <DetailRow label={t('detail.stateLabel')}>{facts.join(' · ')}</DetailRow>}
+      </div>
+      {detail.enrichment.status === 'partial' && (
+        <p className="sb-hint">{t('detail.enrichment.partial', { reason: detail.enrichment.reason ?? 'unknown' })}</p>
+      )}
+      {stats === undefined
+        ? <p className="sb-hint">{t('detail.noStats')}</p>
+        : (
+          <div className="sb-detail-grid">
+            <DetailRow label={t('detail.metricsLabel')}>
+              {t('detail.metrics', {
+                turns: stats.turns ?? 0,
+                steps: stats.steps ?? 0,
+                user: stats.userMessages ?? 0,
+                assistant: stats.assistantMessages ?? 0,
+                calls: stats.toolCalls ?? 0,
+                results: stats.toolResults ?? 0,
+              })}
+            </DetailRow>
+            {stats.tokens !== undefined && (
+              <DetailRow label={t('detail.tokensLabel')}>
+                {t('detail.tokens', {
+                  input: stats.tokens.inputTokens,
+                  output: stats.tokens.outputTokens,
+                  read: stats.tokens.cacheReadTokens,
+                  write: stats.tokens.cacheWriteTokens,
+                })}
+              </DetailRow>
+            )}
+            {(stats.sizeBytes !== undefined || stats.eventCount !== undefined) && (
+              <DetailRow label={t('detail.logLabel')}>
+                {t('detail.size', { size: formatBytes(stats.sizeBytes ?? 0), events: stats.eventCount ?? 0 })}
+              </DetailRow>
+            )}
+          </div>
+        )}
+      <div className="sb-detail-grid">
+        <DetailRow label={t('detail.lineage')}>
+          {detail.lineage.complete ? '' : t('detail.parentMissing', { id: detail.lineage.missingParentId ?? '?' })}
+        </DetailRow>
+        {detail.lineage.ancestors.map(entry => (
+          <div key={`ancestor-${entry.id}`} className="sb-lineage">↑ <span className="sb-mono">{entry.id}</span>{entry.cwd === undefined ? '' : ` · ${tailPath(entry.cwd)}`}</div>
+        ))}
+        {descendants.length > 0 && (
+          <>
+            <DetailRow label={t('detail.descendants', { count: descendants.length })}>{''}</DetailRow>
+            {descendants.map(row => (
+              <div key={`descendant-${row.node.id}`} className="sb-lineage">
+                {'  '.repeat(row.depth)}↳ <span className="sb-mono">{row.node.id}</span>
+                {row.node.agentPreset === undefined ? '' : ` · ${row.node.agentPreset}`}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </>
+  )
+}
 
 /** Format one Unix epoch ms as a local date-time. */
 function formatTime(ms: number): string {
@@ -80,17 +190,30 @@ const CSS = `
 .sb-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .sb-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .sb-hint { font-size: 12px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-pick { flex-shrink: 0; }
+.sb-batchbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px dashed var(--dsw-alias-border-l2, #d0d5dd); border-radius: var(--dsw-radius-sm, 6px); font-size: 13px; }
+.sb-batchbar .sb-count { margin-left: 0; }
+.sb-dialog-wide { width: min(620px, 100%); max-height: min(78vh, 720px); overflow-y: auto; }
+.sb-detail-grid { display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 20px; }
+.sb-detail-row { display: flex; gap: 10px; }
+.sb-detail-label { flex-shrink: 0; min-width: 96px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-detail-value { word-break: break-word; }
+.sb-mono { font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, monospace); font-size: 12px; }
+.sb-lineage { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-dimmed, #667085); white-space: pre-wrap; }
 `
 
 /** One session row. */
-function SessionRow({ row, workspace, archived, pinned, busy, t, onOpen, onTrash }: {
+function SessionRow({ row, workspace, archived, pinned, selected, busy, t, onSelect, onOpen, onDetails, onTrash }: {
   row: SessionSummaryLike
   workspace: WorkspaceViewLike | undefined
   archived: boolean
   pinned: boolean
+  selected: boolean
   busy: boolean
   t: SessionButlerPageProps['t']
+  onSelect: (id: string) => void
   onOpen: (id: string) => void
+  onDetails: (row: SessionSummaryLike) => void
   onTrash: (row: SessionSummaryLike) => void
 }): ReactElement {
   const badges: ReactElement[] = []
@@ -110,12 +233,20 @@ function SessionRow({ row, workspace, archived, pinned, busy, t, onOpen, onTrash
   const meta = [...new Set(metaParts)].join(' · ')
   return (
     <div className="sb-row">
+      <input
+        type="checkbox"
+        className="sb-pick"
+        checked={selected}
+        aria-label={t('action.selectRow')}
+        onChange={() => onSelect(row.id)}
+      />
       <div className="sb-row-main">
         <div className="sb-row-title" title={row.displayTitle}>{row.displayTitle}</div>
         <div className="sb-row-meta" title={row.cwd ?? row.id}>{meta}</div>
         {badges.length > 0 && <div className="sb-badges">{badges}</div>}
       </div>
       <div className="sb-row-actions">
+        <button type="button" className="sb-btn" onClick={() => onDetails(row)}>{t('action.details')}</button>
         <button type="button" className="sb-btn" onClick={() => onOpen(row.id)}>{t('action.open')}</button>
         <button type="button" className="sb-btn sb-btn-danger" disabled={busy} onClick={() => onTrash(row)}>{t('action.trash')}</button>
       </div>
@@ -124,11 +255,13 @@ function SessionRow({ row, workspace, archived, pinned, busy, t, onOpen, onTrash
 }
 
 /** One trash row. */
-function TrashRow({ entry, canPurge, busy, t, onRestore, onPurge }: {
+function TrashRow({ entry, canPurge, selected, busy, t, onSelect, onRestore, onPurge }: {
   entry: TrashEntryLike
   canPurge: boolean
+  selected: boolean
   busy: boolean
   t: SessionButlerPageProps['t']
+  onSelect: (id: string) => void
   onRestore: (entry: TrashEntryLike) => void
   onPurge: (entry: TrashEntryLike) => void
 }): ReactElement {
@@ -138,6 +271,13 @@ function TrashRow({ entry, canPurge, busy, t, onRestore, onPurge }: {
   if (entry.descendants.length > 0) badges.push(<span key="cascade" className="sb-badge">{t('badge.cascade', { count: entry.descendants.length })}</span>)
   return (
     <div className="sb-row">
+      <input
+        type="checkbox"
+        className="sb-pick"
+        checked={selected}
+        aria-label={t('action.selectRow')}
+        onChange={() => onSelect(entry.id)}
+      />
       <div className="sb-row-main">
         <div className="sb-row-title" title={entry.id}>{entry.id}</div>
         <div className="sb-row-meta" title={entry.originalPath}>
@@ -172,6 +312,8 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [purgeInput, setPurgeInput] = useState('')
+  const [selectedSessions, setSelectedSessions] = useState<ReadonlySet<string>>(() => new Set())
+  const [selectedTrash, setSelectedTrash] = useState<ReadonlySet<string>>(() => new Set())
 
   const fail = useCallback((error: unknown): void => {
     if (error instanceof BridgeError) {
@@ -298,6 +440,133 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
     }
   }, [call, fail, loadTrash, props, t])
 
+  const toggleSelection = useCallback((setter: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>, id: string): void => {
+    setter((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleAllSessions = useCallback((ids: readonly string[], checked: boolean): void => {
+    setSelectedSessions((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleAllTrash = useCallback((ids: readonly string[], checked: boolean): void => {
+    setSelectedTrash((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }, [])
+
+  const openDetails = useCallback(async (row: SessionSummaryLike): Promise<void> => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const detail = await call<SessionDetailLike>('detail', { sessionId: row.id })
+      setDialog({ kind: 'detail', detail })
+    } catch (error) {
+      fail(error)
+    } finally {
+      setBusy(false)
+    }
+  }, [call, fail])
+
+  const requestBatchTrash = useCallback(async (): Promise<void> => {
+    const ids = [...selectedSessions]
+    if (ids.length === 0) return
+    if (ids.length > MAX_BATCH_SIZE) {
+      setMessage({ kind: 'error', text: t('batch.tooMany', { max: MAX_BATCH_SIZE }) })
+      return
+    }
+    setBusy(true)
+    setMessage(null)
+    try {
+      // Confirmation needs each header's formatStatus and cascade count. Read
+      // details in small groups so a large batch does not open many event logs
+      // at once.
+      const details: SessionDetailLike[] = []
+      for (let offset = 0; offset < ids.length; offset += 4) {
+        details.push(...await Promise.all(ids.slice(offset, offset + 4).map(id => call<SessionDetailLike>('detail', { sessionId: id }))))
+      }
+      if (details.some(detail => detail.formatStatus === 'migration-required')) {
+        setMessage({ kind: 'error', text: t('dialog.trash.migration') })
+        return
+      }
+      const descendants = details.reduce((sum, detail) => sum + detail.descendantIds.length, 0)
+      setDialog({ kind: 'batch-trash', ids, descendants, cascade: status?.cascadeSubagents ?? true })
+    } catch (error) {
+      fail(error)
+    } finally {
+      setBusy(false)
+    }
+  }, [call, fail, selectedSessions, status, t])
+
+  const confirmBatchTrash = useCallback(async (): Promise<void> => {
+    if (dialog?.kind !== 'batch-trash') return
+    setBusy(true)
+    try {
+      const result = await call<BatchResultLike>('trash-many', { sessionIds: dialog.ids, cascade: dialog.cascade })
+      setMessage(result.failed.length === 0
+        ? { kind: 'info', text: t('status.batchTrashed', { count: result.moved.length }) }
+        : {
+            kind: 'error',
+            text: `${t('status.batchFailed', {
+              failed: result.failed.length,
+              total: dialog.ids.length,
+              ids: result.failed.join(', '),
+            })} ${t('status.batchTrashed', { count: result.moved.length })}`,
+          })
+      setDialog(null)
+      setSelectedSessions(new Set())
+      props.refreshSessions()
+      await loadTrash()
+    } catch (error) {
+      fail(error)
+    } finally {
+      setBusy(false)
+    }
+  }, [call, dialog, fail, loadTrash, props, t])
+
+  const restoreSelected = useCallback(async (): Promise<void> => {
+    const ids = [...selectedTrash]
+    if (ids.length === 0) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const result = await call<BatchResultLike>('restore-many', { sessionIds: ids })
+      setMessage(result.failed.length === 0
+        ? { kind: 'info', text: t('status.batchRestored', { count: result.moved.length }) }
+        : {
+            kind: 'error',
+            text: `${t('status.batchFailed', {
+              failed: result.failed.length,
+              total: ids.length,
+              ids: result.failed.join(', '),
+            })} ${t('status.batchRestored', { count: result.moved.length })}`,
+          })
+      setSelectedTrash(new Set())
+      props.refreshSessions()
+      await loadTrash()
+    } catch (error) {
+      fail(error)
+    } finally {
+      setBusy(false)
+    }
+  }, [call, fail, loadTrash, props, selectedTrash, t])
+
   const confirmPurge = useCallback(async (): Promise<void> => {
     if (dialog?.kind !== 'purge') return
     setBusy(true)
@@ -316,6 +585,19 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
 
   const canPurge = status?.permanentDelete === 'confirm'
   const dialogMismatch = dialog?.kind === 'purge' && purgeInput.length > 0 && purgeInput !== dialog.entry.id
+  const visibleSessionIds = visibleSessions.map(row => row.id)
+  const allSessionsSelected = visibleSessionIds.length > 0 && visibleSessionIds.every(id => selectedSessions.has(id))
+  const visibleTrashIds = entries.map(entry => entry.id)
+  const allTrashSelected = visibleTrashIds.length > 0 && visibleTrashIds.every(id => selectedTrash.has(id))
+  const dialogTitle = dialog === null
+    ? ''
+    : dialog.kind === 'trash'
+      ? t('dialog.trash.title')
+      : dialog.kind === 'batch-trash'
+        ? t('dialog.batchTrash.title', { count: dialog.ids.length })
+        : dialog.kind === 'detail'
+          ? t('dialog.detail.title')
+          : t('dialog.purge.title')
 
   return (
     <section className="sb-page" aria-label={t('title')}>
@@ -349,6 +631,28 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
             <label className="sb-toggle"><input type="checkbox" checked={showSubagent} onChange={event => setShowSubagent(event.target.checked)} />{t('filter.showSubagent')}</label>
             <span className="sb-count">{t('count.sessions', { count: visibleSessions.length })}</span>
           </div>
+          <div className="sb-batchbar">
+            <label className="sb-toggle">
+              <input
+                type="checkbox"
+                checked={allSessionsSelected}
+                disabled={visibleSessionIds.length === 0}
+                onChange={event => toggleAllSessions(visibleSessionIds, event.target.checked)}
+              />
+              {t('action.selectAll')}
+            </label>
+            <span className="sb-count">{t('batch.selected', { count: selectedSessions.size })}</span>
+            {selectedSessions.size > 0 && (
+              <>
+                <button type="button" className="sb-btn sb-btn-danger" disabled={busy} onClick={() => { void requestBatchTrash() }}>
+                  {t('action.trashSelected', { count: selectedSessions.size })}
+                </button>
+                <button type="button" className="sb-btn" disabled={busy} onClick={() => setSelectedSessions(new Set())}>
+                  {t('action.clearSelection')}
+                </button>
+              </>
+            )}
+          </div>
           <div className="sb-list">
             {visibleSessions.length === 0
               ? <div className="sb-empty">{sessions.phase === 'ready' ? t('empty.sessions') : t('loading')}</div>
@@ -359,9 +663,12 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
                   workspace={workspaceBySession.get(row.id)}
                   archived={archivedSessions.has(row.id)}
                   pinned={pinnedOrder.has(row.id)}
+                  selected={selectedSessions.has(row.id)}
                   busy={busy}
                   t={t}
+                  onSelect={id => toggleSelection(setSelectedSessions, id)}
                   onOpen={props.openSession}
+                  onDetails={row => { void openDetails(row) }}
                   onTrash={row => { void requestTrash(row) }}
                 />
               ))}
@@ -371,6 +678,28 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
         <>
           <div className="sb-filters">
             <span className="sb-count">{t('count.trash', { count: entries.length })}</span>
+          </div>
+          <div className="sb-batchbar">
+            <label className="sb-toggle">
+              <input
+                type="checkbox"
+                checked={allTrashSelected}
+                disabled={visibleTrashIds.length === 0}
+                onChange={event => toggleAllTrash(visibleTrashIds, event.target.checked)}
+              />
+              {t('action.selectAll')}
+            </label>
+            <span className="sb-count">{t('batch.selected', { count: selectedTrash.size })}</span>
+            {selectedTrash.size > 0 && (
+              <>
+                <button type="button" className="sb-btn" disabled={busy} onClick={() => { void restoreSelected() }}>
+                  {t('action.restoreSelected', { count: selectedTrash.size })}
+                </button>
+                <button type="button" className="sb-btn" disabled={busy} onClick={() => setSelectedTrash(new Set())}>
+                  {t('action.clearSelection')}
+                </button>
+              </>
+            )}
           </div>
           <div className="sb-list">
             {loadingTrash
@@ -382,8 +711,10 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
                     key={entry.id}
                     entry={entry}
                     canPurge={canPurge}
+                    selected={selectedTrash.has(entry.id)}
                     busy={busy}
                     t={t}
+                    onSelect={id => toggleSelection(setSelectedTrash, id)}
                     onRestore={entry => { void restoreEntry(entry) }}
                     onPurge={entry => { setPurgeInput(''); setDialog({ kind: 'purge', entry }) }}
                   />
@@ -401,8 +732,13 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
 
       {dialog !== null && (
         <div className="sb-overlay" role="presentation" onClick={event => { if (event.target === event.currentTarget && !busy) setDialog(null) }}>
-          <div className="sb-dialog" role="dialog" aria-modal="true" aria-label={dialog.kind === 'trash' ? t('dialog.trash.title') : t('dialog.purge.title')}>
-            <h2 className="sb-dialog-title">{dialog.kind === 'trash' ? t('dialog.trash.title') : t('dialog.purge.title')}</h2>
+          <div
+            className={dialog.kind === 'detail' ? 'sb-dialog sb-dialog-wide' : 'sb-dialog'}
+            role="dialog"
+            aria-modal="true"
+            aria-label={dialogTitle}
+          >
+            <h2 className="sb-dialog-title">{dialogTitle}</h2>
             {dialog.kind === 'trash' ? (
               <>
                 <p className="sb-dialog-body">{t('dialog.trash.body', { title: dialog.row.displayTitle })}</p>
@@ -416,6 +752,27 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
                 <div className="sb-dialog-actions">
                   <button type="button" className="sb-btn" disabled={busy} onClick={() => setDialog(null)}>{t('action.cancel')}</button>
                   <button type="button" className="sb-btn sb-btn-danger" disabled={busy} onClick={() => { void confirmTrash() }}>{t('action.trash')}</button>
+                </div>
+              </>
+            ) : dialog.kind === 'batch-trash' ? (
+              <>
+                <p className="sb-dialog-body">{t('dialog.batchTrash.body')}</p>
+                {dialog.descendants > 0 && (
+                  <label className="sb-check">
+                    <input type="checkbox" checked={dialog.cascade} onChange={event => setDialog({ ...dialog, cascade: event.target.checked })} />
+                    {t('dialog.batchTrash.cascade', { count: dialog.descendants })}
+                  </label>
+                )}
+                <div className="sb-dialog-actions">
+                  <button type="button" className="sb-btn" disabled={busy} onClick={() => setDialog(null)}>{t('action.cancel')}</button>
+                  <button type="button" className="sb-btn sb-btn-danger" disabled={busy} onClick={() => { void confirmBatchTrash() }}>{t('action.trash')}</button>
+                </div>
+              </>
+            ) : dialog.kind === 'detail' ? (
+              <>
+                <SessionDetailView detail={dialog.detail} t={t} />
+                <div className="sb-dialog-actions">
+                  <button type="button" className="sb-btn" onClick={() => setDialog(null)}>{t('action.cancel')}</button>
                 </div>
               </>
             ) : (

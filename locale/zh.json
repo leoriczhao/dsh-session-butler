@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Threadloom 会话管理",
-    "description": "DeepSeek Harness 的会话管理插件：跨 workspace 浏览、检索、查看详情，并以回收站方式安全删除会话。",
+    "description": "DeepSeek Harness 的会话管理插件：跨 workspace 浏览、筛选、查看详情、批量整理，并以回收站方式安全删除会话；同时提供只读 agent 工具。",
     "detail": "docs/usage.md"
   }
 }

@@ -3,7 +3,7 @@
 > DeepSeek Harness 的会话管理插件 —— 把散落在各个 workspace 里的会话，织成一张可检索、可整理、可恢复的网。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**foundation + M1 + M2（删除核心 + `/session-butler` 命令 + Web 管理页/同源桥已实现并在临时 profile 完成端到端验证；agent 工具与批量操作 M3；内容检索二期）**
+**状态**：**foundation + M1 + M2 + M3（删除核心 + `/session-butler` 命令 + Web 管理页/同源桥 + 只读 agent 工具 + 批量操作 + 详情补全均已实现；M4 发布验收待完成，暂不发布）**
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
@@ -15,16 +15,17 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | 能力 | 状态 |
 |---|---|
 | 跨 workspace 统一列表 / 筛选 | ✅ M2（main panel + sidebar 入口；标题/路径/id 过滤 + workspace/归档/子代理筛选） |
-| 会话详情（cwd / 状态 / 时间 / 归属 workspace） | ✅ M2（行内信息 + 删除前 detail）；轮数 / token / 字节大小 / preset / 血缘树 🔜 M3 |
-| 改名 / 置顶 / 归档 / 取消归档 | ✅ 复用 DSH 官方 UI（本插件页面不重复提供，M3 评估批量操作时再接入） |
+| 会话详情（cwd / 状态 / 时间 / 归属 workspace） | ✅ M3（行内信息 + 详情弹窗：轮数/步骤/消息数/工具调用/token/日志字节/血缘树/preset/enrichment） |
+| 改名 / 置顶 / 归档 / 取消归档 | ✅ 复用 DSH 官方 UI（本插件页面不重复提供；M3 批量范围仅删除/恢复） |
 | **删除（回收站优先 + 恢复 + 永久删除）** | ✅ M1 Host 核心 + ✅ M2 管理页/同源桥（`/session-butler` 命令同样可用） |
 | 子代理级联删除（fork 永不级联） | ✅ M1 |
 | `/session-butler` 命令 | ✅ M1（list / trash / restore / purge） |
 | 回收站管理页 | ✅ M2（列表、恢复、二次确认后永久删除） |
-| 只读 agent 工具、批量操作 | 🔜 M3 |
+| 只读 agent 工具 | ✅ M3（`session_butler_list` / `session_butler_detail`；写操作不进模型面） |
+| 批量操作 | ✅ M3（管理页多选 + 同源桥 `trash-many` / `restore-many`，逐项结果） |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ M0 已完成 |
 
-> 当前 `0.1.0` 的工作区已包含可发布的包骨架、M1 删除核心与 M2 Web 管理页；工具面（M3）与发布验收（M4）尚未完成，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 35 tests + npm pack 契约）。发布门禁见 [`docs/decisions.md`](docs/decisions.md)。
+> 当前 `0.1.0` 的工作区已包含可发布的包骨架、M1 删除核心、M2 Web 管理页与 M3 工具/批量/详情；发布验收（M4）尚未完成，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 52 tests + npm pack 契约）。发布门禁见 [`docs/decisions.md`](docs/decisions.md)。
 
 ## 快速开始（开发）
 
@@ -56,7 +57,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 │   ├── index.ts                 # Host 入口（name/inject/Config/apply）
 │   ├── config.ts                # Schemastery 配置
 │   ├── shared/                  # 稳定标识 + 稳定错误码
-│   ├── host/                    # 删除核心：ports/locate/lineage/trash-store/service/bridge/command
+│   ├── host/                    # Host 半：ports/locate/lineage/trash-store/read-model/service/tools/bridge/command
 │   └── client/                  # Client 半：index/page/bridge/locale/contract
 ├── scripts/                     # build-client / validate-package / clean
 ├── tests/                       # node:test 产物与 manifest 冒烟
@@ -69,7 +70,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 | 文档 | 内容 |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
-| [`docs/decisions.md`](docs/decisions.md) | 决策记录（D-001…D-017）+ 已收敛问题 + 发布门禁 |
+| [`docs/decisions.md`](docs/decisions.md) | 决策记录（D-001…D-020）+ 已收敛问题 + 发布门禁 |
 | [`docs/publishing.md`](docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
 | [`docs/usage.md`](docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
 | [`research/dsh-session-management-v2.md`](research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
@@ -81,7 +82,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 
 ## 决策状态
 
-已定：包名/发布渠道/MIT（D-002）、删除采用回收站优先（D-003）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 用 main panel + sidebar（D-009）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）。
+已定：包名/发布渠道/MIT（D-002）、删除采用回收站优先（D-003）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 用 main panel + sidebar（D-009）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
 
 Q1–Q7 已全部收敛（回收站保留期 30 天不自动清理；永久删除默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。
 

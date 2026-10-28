@@ -12,7 +12,7 @@ import { PANEL_ID } from '../shared/identity.js'
 import { callBridge } from './bridge.js'
 import type { ClientContextLike, PageActions } from './contract.js'
 import { EN, NS, ZH } from './locale.js'
-import { SessionButlerIcon, SessionButlerPage } from './page.js'
+import { SessionButlerIcon, SessionButlerPage, SessionDetailView } from './page.js'
 
 /**
  * Client services this half needs: slot registration, locale dictionaries, the
@@ -20,6 +20,8 @@ import { SessionButlerIcon, SessionButlerPage } from './page.js'
  * the session store's manual refresh after a trash/restore.
  */
 export const inject: string[] = ['slots', 'locale', 'uiWorkspace', 'sessions']
+
+export { SessionButlerIcon, SessionButlerPage, SessionDetailView }
 
 /** Mount the Threadloom Client half. */
 export function apply(ctx: ClientContextLike): void {

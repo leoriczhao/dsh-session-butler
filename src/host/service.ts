@@ -17,13 +17,28 @@ import { subagentDescendants } from './lineage.js'
 import { SessionLocator } from './locate.js'
 import type {
   AgentsPort,
+  LiveAgentLike,
+  LiveSessionLike,
+  SessionHeaderLike,
+  SessionLineageTraceLike,
   SessionObservationLike,
   SessionPersistencePort,
+  SessionPersistenceSnapshotLike,
   SessionQueryPort,
   SessionRecordLike,
   SessionsPort,
   WorkspaceRegistryPort,
 } from './ports.js'
+import {
+  lineageView,
+  summarizeSessionEvents,
+  type LineageEntry,
+  type LineageNode,
+  type SessionEventStats,
+  type SessionListEntry,
+  type SessionListFilters,
+  type SessionListResult,
+} from './read-model.js'
 import { TrashStore, type TrashEntry } from './trash-store.js'
 
 /** Construction dependencies; tests supply fakes and a temporary sessions root. */
@@ -83,20 +98,67 @@ export interface TrashListEntry {
   }
 }
 
-/** Detail shown before a destructive action (and reusable by M3's tools). */
+/** One structural header snapshot (stable subset of the session header). */
+export interface SessionHeaderSnapshot {
+  readonly id: string
+  readonly cwd?: string
+  readonly createdAt?: number
+  readonly parentSession?: string
+  readonly origin?: 'subagent'
+  readonly isSeeded?: boolean
+  readonly delegationDepth?: number
+  readonly agentPreset?: string
+}
+
+/** Enrichment outcome: `partial` means the header/lineage are present but log figures are not. */
+export interface DetailEnrichment {
+  readonly status: 'complete' | 'partial'
+  /** Why enrichment is partial: migration under way or the log could not be read. */
+  readonly reason?: 'migration-required' | 'read-failed'
+}
+
+/** Detail shown before a destructive action and by the read-only tools. */
 export interface SessionDetail {
   readonly id: string
-  readonly headerSnapshot: {
-    readonly id: string
-    readonly cwd?: string
-    readonly createdAt?: number
-    readonly parentSession?: string
-    readonly origin?: 'subagent'
-  }
+  readonly headerSnapshot: SessionHeaderSnapshot
   readonly formatStatus?: 'current' | 'migration-required'
+  /** A live Session or Agent belongs to this process. */
+  readonly live: boolean
   /** Ids of subagent descendants that a cascade would also delete. */
   readonly descendantIds: readonly string[]
+  readonly enrichment: DetailEnrichment
+  /** Log-derived figures; absent when enrichment is unavailable. */
+  readonly stats?: Partial<SessionEventStats> & {
+    readonly eventCount?: number
+    readonly sizeBytes?: number
+    readonly inheritedEventCount?: number
+  }
+  readonly lineage: {
+    readonly complete: boolean
+    readonly missingParentId?: string
+    readonly ancestors: readonly LineageEntry[]
+    readonly descendants: readonly LineageNode[]
+  }
 }
+
+/** One item in a batch operation result. */
+export interface BatchItemResult {
+  readonly id: string
+  readonly ok: boolean
+  /** Sessions this item actually moved (includes cascade descendants). */
+  readonly moved: readonly string[]
+  readonly error?: { readonly code: string; readonly message: string }
+}
+
+/** Result of a batch trash or restore. */
+export interface BatchResult {
+  readonly items: readonly BatchItemResult[]
+  readonly moved: readonly string[]
+  readonly failed: readonly string[]
+}
+
+/** Hard upper bound on one batch request. */
+const MAX_BATCH_SIZE = 50
 
 /** Trash listing plus unparsable leftovers. */
 export interface TrashListResult {
@@ -106,6 +168,35 @@ export interface TrashListResult {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
+
+/** Project one header into the stable snapshot subset. */
+function snapshotHeader(header: SessionHeaderLike): SessionHeaderSnapshot {
+  return {
+    id: header.id,
+    ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
+    ...(header.createdAt === undefined ? {} : { createdAt: header.createdAt }),
+    ...(header.parentSession === undefined ? {} : { parentSession: header.parentSession }),
+    ...(header.origin === undefined ? {} : { origin: header.origin }),
+    ...(header.isSeeded === undefined ? {} : { isSeeded: header.isSeeded }),
+    ...(header.delegationDepth === undefined ? {} : { delegationDepth: header.delegationDepth }),
+    ...(header.agentPreset === undefined ? {} : { agentPreset: header.agentPreset }),
+  }
+}
+
+/** Narrow a live Session value returned by `ctx.sessions.list()`. */
+function liveSessionHeader(value: unknown): SessionHeaderLike | undefined {
+  const record = value as { header?: unknown } | undefined
+  const header = record?.header as SessionHeaderLike | undefined
+  return header !== undefined && typeof header.id === 'string' && typeof header.createdAt === 'number'
+    ? header
+    : undefined
+}
+
+/** Narrow one live Agent value returned by `ctx.agents.list()`. */
+function liveAgentSessionId(value: unknown): string | undefined {
+  const record = value as { sessionId?: unknown } | undefined
+  return typeof record?.sessionId === 'string' ? record.sessionId : undefined
+}
 
 /** Release a potentially disposable observation without letting disposal mask a result. */
 function releaseObservation(observation: SessionObservationLike): void {
@@ -173,24 +264,253 @@ export class SessionButlerService {
 
   /**
    * Describe one live-or-cold session without activating an Agent.
+   *
+   * The header and format status come from persistence metadata so a session
+   * awaiting migration is still describable; log-derived figures are added on a
+   * best-effort basis and reported as partial when that read is unavailable.
    * @param sessionId - session to describe.
-   * @returns header snapshot, format status and subagent descendants a cascade would include.
+   * @returns header snapshot, format status, subagent descendants, log figures, and lineage.
    */
   async detail(sessionId: string): Promise<SessionDetail> {
-    const record = await this.readRootRecord(sessionId)
-    const descendants = await this.readDescendants(sessionId)
-    return {
+    const stored = await this.statOrNotFound(sessionId)
+    const { trace, lineage } = await this.readLineage(sessionId)
+    const base = {
       id: sessionId,
-      headerSnapshot: {
-        id: record.header.id,
-        ...(record.header.cwd === undefined ? {} : { cwd: record.header.cwd }),
-        ...(record.header.createdAt === undefined ? {} : { createdAt: record.header.createdAt }),
-        ...(record.header.parentSession === undefined ? {} : { parentSession: record.header.parentSession }),
-        ...(record.header.origin === undefined ? {} : { origin: record.header.origin }),
-      },
-      ...(record.formatStatus === undefined ? {} : { formatStatus: record.formatStatus }),
-      descendantIds: descendants.map(item => item.header.id),
+      headerSnapshot: snapshotHeader(stored.header),
+      ...(stored.formatStatus === undefined ? {} : { formatStatus: stored.formatStatus }),
+      live: this.isLive(sessionId),
+      descendantIds: subagentDescendants(trace).map(item => item.header.id),
+      enrichment: { status: 'complete' as const },
+      lineage,
     }
+    const metadata: { eventCount?: number; sizeBytes?: number } = {
+      ...(stored.eventCount === undefined ? {} : { eventCount: stored.eventCount }),
+      ...(stored.sizeBytes === undefined ? {} : { sizeBytes: stored.sizeBytes }),
+    }
+    if (stored.formatStatus === 'migration-required') {
+      return {
+        ...base,
+        enrichment: { status: 'partial', reason: 'migration-required' },
+        ...(Object.keys(metadata).length === 0 ? {} : { stats: metadata }),
+      }
+    }
+    let observation: SessionObservationLike | undefined
+    try {
+      observation = await this.options.query.observeSession(sessionId, { projectionMode: 'none' })
+      const observedEvents = observation.events ?? []
+      const stats = {
+        ...summarizeSessionEvents(observedEvents),
+        // `stat()` may omit eventCount (history-dependent); the observed log is
+        // then the best available count and matches what the detail renderer shows.
+        ...(stored.eventCount === undefined ? { eventCount: observedEvents.length } : {}),
+        ...metadata,
+        ...(observation.inheritedEventCount === undefined ? {} : { inheritedEventCount: observation.inheritedEventCount }),
+      }
+      return {
+        ...base,
+        headerSnapshot: snapshotHeader(observation.header),
+        stats,
+      }
+    } catch {
+      return {
+        ...base,
+        enrichment: { status: 'partial', reason: 'read-failed' },
+        ...(Object.keys(metadata).length === 0 ? {} : { stats: metadata }),
+      }
+    } finally {
+      if (observation !== undefined) releaseObservation(observation)
+    }
+  }
+
+  /**
+   * List the logical session corpus (live-preferred) newest first.
+   *
+   * Titles are read in one batch for the returned page only; a session whose
+   * title fold fails keeps `title` absent instead of failing the listing.
+   * @param filters - optional text/workspace filters and page size.
+   * @returns the page plus the pre-limit match count.
+   */
+  async listSessions(filters: SessionListFilters = {}): Promise<SessionListResult> {
+    const limit = Math.min(100, Math.max(1, Math.trunc(filters.limit ?? 25)))
+    const persisted = await this.options.persistence.list()
+    const byId = new Map<string, { header: SessionHeaderLike; formatStatus?: 'current' | 'migration-required' }>()
+    for (const snapshot of persisted) {
+      byId.set(snapshot.header.id, {
+        header: snapshot.header,
+        ...(snapshot.formatStatus === undefined ? {} : { formatStatus: snapshot.formatStatus }),
+      })
+    }
+    for (const live of this.sessions?.list?.() ?? []) {
+      const header = liveSessionHeader(live)
+      if (header !== undefined && !byId.has(header.id)) byId.set(header.id, { header })
+    }
+    for (const agent of this.agents?.list?.() ?? []) {
+      const id = liveAgentSessionId(agent)
+      if (id !== undefined && !byId.has(id)) {
+        // An Agent without a Session listing entry still means the id is live.
+        byId.set(id, { header: { id, createdAt: 0 } as SessionHeaderLike })
+      }
+    }
+    const archived = new Set(this.workspace?.archivedSessionIds ?? [])
+    const pinned = new Set(this.workspace?.pinnedSessionIds ?? [])
+    const query = filters.query?.trim().toLowerCase()
+    const cwdFilter = filters.cwd?.trim().toLowerCase()
+    const includeArchived = filters.includeArchived === true
+    const includeSubagents = filters.includeSubagents !== false
+    const rows = [...byId.values()].filter((row) => {
+      const { header } = row
+      const subagent = header.origin === 'subagent'
+      if (subagent && !includeSubagents) return false
+      if (!includeArchived && archived.has(header.id)) return false
+      if (cwdFilter !== undefined && (header.cwd ?? '').toLowerCase().startsWith(cwdFilter) === false) return false
+      if (query !== undefined) {
+        const haystack = `${header.id}\n${header.cwd ?? ''}`.toLowerCase()
+        if (!haystack.includes(query)) return false
+      }
+      return true
+    })
+    rows.sort((left, right) => (right.header.createdAt ?? 0) - (left.header.createdAt ?? 0))
+    const page = rows.slice(0, limit)
+    const titles = await this.readTitles(page.map(row => row.header.id))
+    const sessions = page.map((row): SessionListEntry => {
+      const { header } = row
+      const title = titles.get(header.id)
+      return {
+        id: header.id,
+        createdAt: header.createdAt,
+        ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
+        ...(title === undefined ? {} : { title }),
+        archived: archived.has(header.id),
+        pinned: pinned.has(header.id),
+        subagent: header.origin === 'subagent',
+        ...(header.parentSession === undefined ? {} : { parentSession: header.parentSession }),
+        ...(header.agentPreset === undefined ? {} : { agentPreset: header.agentPreset }),
+        ...(row.formatStatus === undefined ? {} : { formatStatus: row.formatStatus }),
+        live: this.isLive(header.id),
+      }
+    })
+    return { sessions, total: rows.length, truncated: rows.length > sessions.length }
+  }
+
+  /**
+   * Trash several sessions independently; one failure does not stop the rest.
+   * @param sessionIds - ids to trash (deduplicated, at most 50).
+   * @param options - cascade/current-session guards applied to each item.
+   * @returns per-item outcomes and the union of moved ids.
+   */
+  async trashMany(
+    sessionIds: readonly string[],
+    options: { cascade?: boolean; currentSessionId?: string } = {},
+  ): Promise<BatchResult> {
+    const ids = this.normalizeBatch(sessionIds)
+    const moved = new Set<string>()
+    const items: BatchItemResult[] = []
+    for (const id of ids) {
+      if (moved.has(id)) {
+        items.push({ id, ok: true, moved: [] })
+        continue
+      }
+      try {
+        const result = await this.trash(id, options)
+        for (const item of result.trashed) moved.add(item)
+        items.push({ id, ok: true, moved: result.trashed })
+      } catch (error) {
+        const failure = asButlerError(error, 'internal', `cannot trash session "${id}"`)
+        items.push({ id, ok: false, moved: [], error: { code: failure.code, message: failure.message } })
+      }
+    }
+    return { items, moved: [...moved], failed: items.filter(item => !item.ok).map(item => item.id) }
+  }
+
+  /**
+   * Restore several trashed sessions independently.
+   * @param sessionIds - ids to restore (deduplicated, at most 50).
+   * @returns per-item outcomes and the union of restored ids.
+   */
+  async restoreMany(sessionIds: readonly string[]): Promise<BatchResult> {
+    const ids = this.normalizeBatch(sessionIds)
+    const moved = new Set<string>()
+    const items: BatchItemResult[] = []
+    for (const id of ids) {
+      try {
+        const result = await this.restore(id)
+        moved.add(result.restored)
+        items.push({ id, ok: true, moved: [result.restored] })
+      } catch (error) {
+        const failure = asButlerError(error, 'internal', `cannot restore session "${id}"`)
+        items.push({ id, ok: false, moved: [], error: { code: failure.code, message: failure.message } })
+      }
+    }
+    return { items, moved: [...moved], failed: items.filter(item => !item.ok).map(item => item.id) }
+  }
+
+  /** Validate and deduplicate one batch id list. */
+  private normalizeBatch(sessionIds: readonly string[]): string[] {
+    if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+      throw new ButlerError('invalid-request', 'a batch operation needs at least one session id')
+    }
+    if (sessionIds.length > MAX_BATCH_SIZE) {
+      throw new ButlerError('invalid-request', `a batch operation accepts at most ${MAX_BATCH_SIZE} session ids`)
+    }
+    const seen = new Set<string>()
+    const ids: string[] = []
+    for (const value of sessionIds) {
+      if (typeof value !== 'string' || value.length === 0) {
+        throw new ButlerError('invalid-request', 'every batch item must be a non-empty session id string')
+      }
+      if (seen.has(value)) continue
+      seen.add(value)
+      ids.push(value)
+    }
+    return ids
+  }
+
+  /** Read persistence metadata, or fail with the stable not-found code. */
+  private async statOrNotFound(sessionId: string): Promise<SessionPersistenceSnapshotLike> {
+    let stored: SessionPersistenceSnapshotLike | undefined
+    try {
+      stored = await this.options.persistence.stat(sessionId)
+    } catch (error) {
+      throw asButlerError(error, 'internal', `cannot read session "${sessionId}"`)
+    }
+    if (stored === undefined) {
+      throw new ButlerError('session-not-found', `session "${sessionId}" was not found`, {
+        details: { sessionId },
+      })
+    }
+    return stored
+  }
+
+  /** Trace lineage once and project it into the read model. */
+  private async readLineage(sessionId: string): Promise<{
+    trace: SessionLineageTraceLike
+    lineage: SessionDetail['lineage']
+  }> {
+    let trace: SessionLineageTraceLike
+    try {
+      trace = await this.options.query.traceSession(sessionId)
+    } catch (error) {
+      throw queryFailure(error, `cannot trace session "${sessionId}"`)
+    }
+    return { trace, lineage: lineageView(trace) }
+  }
+
+  /** Batch-read titles for one page; failures leave titles absent. */
+  private async readTitles(sessionIds: readonly string[]): Promise<Map<string, string>> {
+    const titles = new Map<string, string>()
+    const read = this.options.query.readTitleSnapshots
+    if (read === undefined || sessionIds.length === 0) return titles
+    try {
+      const results = await read.call(this.options.query, sessionIds)
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue
+        const title = result.value?.title?.title
+        if (typeof title === 'string' && title.length > 0) titles.set(result.sessionId, title)
+      }
+    } catch {
+      // Titles are an enhancement; a batch title failure never fails the listing.
+    }
+    return titles
   }
 
   /** List trashed sessions. Expired entries are reported but never auto-purged (Q1). */
@@ -330,24 +650,14 @@ export class SessionButlerService {
     return { purged: sessionId }
   }
 
-  /** Read the root record: header + format status, without activating an Agent. */
+  /** Read the root record from persistence metadata, without reading the log. */
   private async readRootRecord(sessionId: string): Promise<SessionRecordLike & { formatStatus?: 'current' | 'migration-required' }> {
-    let observation: SessionObservationLike
-    try {
-      observation = await this.options.query.observeSession(sessionId)
-    } catch (error) {
-      throw queryFailure(error, `cannot read session "${sessionId}"`)
-    }
-    try {
-      const stats = await this.options.persistence.stat(sessionId)
-      return {
-        header: observation.header,
-        live: this.isLive(sessionId),
-        persisted: true,
-        ...(stats?.formatStatus === undefined ? {} : { formatStatus: stats.formatStatus }),
-      }
-    } finally {
-      releaseObservation(observation)
+    const stored = await this.statOrNotFound(sessionId)
+    return {
+      header: stored.header,
+      live: this.isLive(sessionId),
+      persisted: true,
+      ...(stored.formatStatus === undefined ? {} : { formatStatus: stored.formatStatus }),
     }
   }
 

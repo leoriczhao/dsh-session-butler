@@ -34,7 +34,8 @@ interface Envelope {
 
 /**
  * Call one Host bridge method.
- * @param method - bridge method (`status`, `detail`, `trash`, `restore`, `purge`, `list-trash`).
+ * @param method - bridge method (`status`, `list`, `detail`, `trash`, `trash-many`,
+ * `restore`, `restore-many`, `purge`, `list-trash`).
  * @param payload - JSON body; omitted sends `{}`.
  * @throws {BridgeError} transport or domain failure, with the stable Host code.
  */

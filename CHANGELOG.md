@@ -6,6 +6,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — M3 read-only tools, batch operations, enriched detail (2026-10-28)
+
+- Host read model (`src/host/read-model.ts`): header snapshots, lineage views,
+  and defensive folding of raw session events into turns/steps/message counts,
+  tool calls, token totals, last activity and title.
+- `SessionButlerService.detail` now returns `lineage`, `enrichment`, and folded
+  `stats` (event count, log size, token totals, preset); `stat(id)` is the sole
+  header source and event enrichment is best-effort, so migration-required or
+  unreadable logs degrade to `enrichment: {status:'partial', reason}` instead of
+  failing the detail read.
+- `SessionButlerService.listSessions(filters)`: merges persisted headers, live
+  sessions/agents, best-effort title snapshots, and archived/pinned sets; filters
+  by query/cwd/archived/subagents, sorts by creation time, pages newest-first
+  (default 25, max 100, `truncated`).
+- Batch operations `trashMany` / `restoreMany` (1–50 unique ids, per-item
+  isolation, aggregate `moved`/`failed`, no-op for ids already removed by a
+  cascade) exposed through new bridge methods `list`, `trash-many`,
+  `restore-many`.
+- Agent tools `session_butler_list` / `session_butler_detail` registered
+  structurally through `ctx.tools.register` (no `@deepseek-ai/dsh-tools`
+  import): hand-built parameter schemas, JSON-Schema output contracts plus
+  bounded text renderers; read-only by design, registered in an optional
+  `tools` injection.
+- Web page: multi-select on both tabs (select-all, clear, batch trash with
+  migration preflight/cascade count, batch restore), a session detail dialog
+  (figures, tokens, log size, lineage tree, enrichment hint), and zh/en strings.
+- Tests: 16 new cases (`m3-read-model`, `m3-tools`, bridge batch/list methods,
+  client batch/detail SSR renders); suite now 52. Tool schemas and sample
+  outputs were validated against the real DSH `assertSupportedJsonSchema` /
+  `validateJsonSchemaValue` implementation.
+- Verified in a temporary Web profile (same DSH home, `tl-m3` profile removed
+  afterwards): `list` paged 99 sessions (`truncated: true` at limit 3), `detail`
+  returned complete enrichment for a real 5.7 MB session (11 turns / 494 steps /
+  4610 observed events / token totals / title / preset) and correct
+  parent↔descendant lineage for a subagent session, `trash-many` rejected all
+  malformed payloads with HTTP 400 `invalid-request`, and `restore-many` reported
+  an unknown id per item (`trash-not-found`) with HTTP 200 aggregate; plugin
+  activation produced no tool/schema warnings.
+
 ### Added — M2 Web management page and bridge (2026-10-28)
 
 - Host: same-origin POST bridge at `/session-butler/api` (`status`, `detail`,

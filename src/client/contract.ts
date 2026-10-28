@@ -73,15 +73,86 @@ export interface TrashEntryLike {
   }
 }
 
-/** Detail shown before a cascade delete. */
+/** One lineage row returned by the Host read model. */
+export interface LineageEntryLike {
+  readonly id: string
+  readonly cwd?: string
+  readonly createdAt?: number
+  readonly origin?: 'subagent'
+  readonly agentPreset?: string
+}
+
+/** One lineage node with nested subagent descendants. */
+export interface LineageNodeLike extends LineageEntryLike {
+  readonly descendants: readonly LineageNodeLike[]
+}
+
+/** Aggregated log figures folded from raw events by the Host. */
+export interface SessionStatsLike {
+  readonly eventCount?: number
+  readonly sizeBytes?: number
+  readonly inheritedEventCount?: number
+  readonly turns?: number
+  readonly steps?: number
+  readonly userMessages?: number
+  readonly assistantMessages?: number
+  readonly toolCalls?: number
+  readonly toolResults?: number
+  readonly lastActivityAt?: number
+  readonly title?: string
+  readonly tokens?: {
+    readonly inputTokens: number
+    readonly outputTokens: number
+    readonly cacheReadTokens: number
+    readonly cacheWriteTokens: number
+  }
+}
+
+/** Enrichment availability reported by the Host. */
+export interface DetailEnrichmentLike {
+  readonly status: 'complete' | 'partial'
+  readonly reason?: 'migration-required' | 'read-failed'
+}
+
+/** Detail shown before a cascade delete and in the detail dialog. */
 export interface SessionDetailLike {
   readonly id: string
   readonly headerSnapshot: {
     readonly id: string
     readonly cwd?: string
+    readonly createdAt?: number
+    readonly parentSession?: string
+    readonly origin?: 'subagent'
+    readonly isSeeded?: boolean
+    readonly delegationDepth?: number
+    readonly agentPreset?: string
   }
   readonly formatStatus?: 'current' | 'migration-required'
+  readonly live: boolean
   readonly descendantIds: readonly string[]
+  readonly enrichment: DetailEnrichmentLike
+  readonly stats?: SessionStatsLike
+  readonly lineage: {
+    readonly complete: boolean
+    readonly missingParentId?: string
+    readonly ancestors: readonly LineageEntryLike[]
+    readonly descendants: readonly LineageNodeLike[]
+  }
+}
+
+/** One item outcome from a Host batch operation. */
+export interface BatchItemResultLike {
+  readonly id: string
+  readonly ok: boolean
+  readonly moved: readonly string[]
+  readonly error?: { readonly code: string; readonly message: string }
+}
+
+/** Aggregate result of a Host batch operation. */
+export interface BatchResultLike {
+  readonly items: readonly BatchItemResultLike[]
+  readonly moved: readonly string[]
+  readonly failed: readonly string[]
 }
 
 /** Actions injected into the registered slot entries. */

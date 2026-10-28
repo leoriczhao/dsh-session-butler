@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-butler",
   "version": "0.1.0",
-  "description": "Session management for DeepSeek Harness: browse, search, inspect, and trash sessions across workspaces.",
+  "description": "Session management for DeepSeek Harness: browse, filter, inspect, batch-manage and trash sessions across workspaces, with read-only agent tools.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

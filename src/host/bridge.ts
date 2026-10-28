@@ -30,7 +30,7 @@ const MAX_BODY_BYTES = 64 * 1024
 /** Absolute prefix path of the bridge. */
 const ROUTE_PATH = `/${API_PREFIX}`
 
-const METHODS = ['status', 'detail', 'trash', 'restore', 'purge', 'list-trash'] as const
+const METHODS = ['status', 'list', 'detail', 'trash', 'trash-many', 'restore', 'restore-many', 'purge', 'list-trash'] as const
 type BridgeMethod = (typeof METHODS)[number]
 
 /** A request body that exceeds the body budget. */
@@ -105,6 +105,48 @@ function booleanField(body: unknown, name: string, fallback: boolean): boolean {
   return value
 }
 
+/** Optional boolean field that stays absent when the caller omits it. */
+function optionalBooleanField(body: unknown, name: string): boolean | undefined {
+  const record = body as Record<string, unknown> | null
+  const value = record?.[name]
+  if (value === undefined) return undefined
+  if (typeof value !== 'boolean') throw new ButlerError('invalid-request', `field "${name}" must be a boolean`)
+  return value
+}
+
+/** Non-empty string array field (deduplicated by the service). */
+function stringArrayField(body: unknown, name: string): string[] {
+  const record = body as Record<string, unknown> | null
+  const value = record?.[name]
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new ButlerError('invalid-request', `field "${name}" must be a non-empty array of session id strings`)
+  }
+  if (value.some(item => typeof item !== 'string' || item.length === 0)) {
+    throw new ButlerError('invalid-request', `field "${name}" must contain only non-empty session id strings`)
+  }
+  return value as string[]
+}
+
+/** Optional page-size field. */
+function optionalNumberField(body: unknown, name: string): number | undefined {
+  const record = body as Record<string, unknown> | null
+  const value = record?.[name]
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ButlerError('invalid-request', `field "${name}" must be a finite number`)
+  }
+  return value
+}
+
+/** Optional trimmed string field. */
+function optionalStringField(body: unknown, name: string): string | undefined {
+  const record = body as Record<string, unknown> | null
+  const value = record?.[name]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new ButlerError('invalid-request', `field "${name}" must be a string`)
+  return value.trim().length === 0 ? undefined : value.trim()
+}
+
 /** Dispatch one admitted request. */
 async function dispatch(service: SessionButlerService, method: BridgeMethod, body: unknown): Promise<unknown> {
   switch (method) {
@@ -112,12 +154,32 @@ async function dispatch(service: SessionButlerService, method: BridgeMethod, bod
       return service.config
     case 'list-trash':
       return service.listTrash()
+    case 'list': {
+      const query = optionalStringField(body, 'query')
+      const cwd = optionalStringField(body, 'cwd')
+      const includeArchived = optionalBooleanField(body, 'includeArchived')
+      const includeSubagents = optionalBooleanField(body, 'includeSubagents')
+      const limit = optionalNumberField(body, 'limit')
+      return service.listSessions({
+        ...(query === undefined ? {} : { query }),
+        ...(cwd === undefined ? {} : { cwd }),
+        ...(includeArchived === undefined ? {} : { includeArchived }),
+        ...(includeSubagents === undefined ? {} : { includeSubagents }),
+        ...(limit === undefined ? {} : { limit }),
+      })
+    }
     case 'detail':
       return service.detail(field(body, 'sessionId'))
     case 'trash':
       return service.trash(field(body, 'sessionId'), { cascade: booleanField(body, 'cascade', service.config.cascadeSubagents) })
+    case 'trash-many':
+      return service.trashMany(stringArrayField(body, 'sessionIds'), {
+        cascade: booleanField(body, 'cascade', service.config.cascadeSubagents),
+      })
     case 'restore':
       return service.restore(field(body, 'sessionId'))
+    case 'restore-many':
+      return service.restoreMany(stringArrayField(body, 'sessionIds'))
     case 'purge':
       return service.purge(field(body, 'sessionId'), field(body, 'confirmId'))
   }

@@ -78,8 +78,16 @@ function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, forma
       return { async close() {} }
     },
     async stat(id) {
+      const found = headers[id]
+      if (found === undefined) return undefined
       const status = formatStatus[id]
-      return status === undefined ? {} : { formatStatus: status }
+      return { header: found, ...(status === undefined ? {} : { formatStatus: status }) }
+    },
+    async list() {
+      return Object.entries(headers).map(([id, value]) => {
+        const status = formatStatus[id]
+        return { header: value, ...(status === undefined ? {} : { formatStatus: status }) }
+      })
     },
   }
   const sessions = { get: id => (live.has(id) ? {} : undefined) }

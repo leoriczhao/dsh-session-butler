@@ -82,12 +82,12 @@
 - **决策**：顶层 `engines.dsh` 声明 `>=0.2.1-rc.2 <0.3.0-0`（经 API 审计，见 D-002/Q7）；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
 - **影响**：DSH 升级时先跑 verify；发现 API 变化收紧范围而非放宽。
 
-### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · proposed
+### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · deferred（M3 收窄为只读）
 
 - **背景**：核实 `docs/tool-catalog.md` 与本进程 `Tool` inspect：DSH 没有任何 `session_create` / `session_fork` / `new_session` 工具。`subagent_fork` 只是「带已完成轮次 seed 的子代理委派」，结果回传父会话，不是用户可见/可切换的新会话；`fork` 存在于 Web Remote、Host `ctx.sessions.fork`（live only）与 GUI（会话页轮末分支 / 侧栏菜单 / 快捷键），但都不是 tool。
 - **决策（建议）**：Threadloom M3 注册工具：`session_butler_fork`（当前会话，默认最近完成轮，支持 `at_seq`）、`session_butler_new`（继承 cwd/workspace/preset 的空会话）、只读 `session_butler_list` / `session_butler_detail`。新会话必须出现在同 workspace 且可被 UI 切换；返回 child session id。删除等破坏性写操作仍不作为工具（D-003 不变）。
 - **技术路径**：复用 Remote fork 的实现路径（`sessionQuery.observeSession` → `buildForkSeed` → `ctx.agents.create` → `workspace.attachSession`），或 live 场景用 `ctx.sessions.fork` + resume；工具默认只操作调用方当前会话，任意 session id 需显式参数与用户确认。
-- **待确认**：① 是否把「从会话新建会话」作为工具纳入 MVP（M3 还是提前到 M1/M2）；② 语义是 fork（复制历史）还是 new（空会话继承 cwd）还是两者都要；③ 是否允许工具操作非当前会话。
+- **M3 收敛（2026-10-28）**：M3 只交付只读 `session_butler_list` / `session_butler_detail`（D-018）；`session_butler_fork` / `session_butler_new` **不进入 0.1.0**，留作二期候选。原因：写工具需要额外的会话切换/父会话授权语义（若允许任意 session id 则风险高），且当前工具面无 fork 属于产品缺口而非发布阻塞。D-015 的技术路径保留，待二期重新确认 ①–③。
 
 ### D-014 会话内「派生/旁支」的剩余缺口，列为二期候选 · proposed
 
@@ -122,6 +122,27 @@
 - **决策**：桥用 `ctx.inject(['webServer','connection'], ...)` 可选注入；`sessions`/`agents`/`workspaceRegistry` 通过 `() => ctx.get(...)` 在操作时延迟取值；命令面不依赖这些可选服务，headless 仍可 `/session-butler`。
 - **影响**：`workspaceAvailable` 变成运行时能力探测（M2 实测从 false 修正为 true）；删除运行中会话在无 workspace 组合继续按 D-013 拒绝。
 
+### D-018 agent 工具：结构化注册 + 只读边界 · accepted
+
+- **背景**：已发布 npm 插件不能 import `@deepseek-ai/dsh-tools`（实现包不在 peer 依赖内），也不能依赖 Typert 的静态 codegen；工具必须按 `ctx.tools.register(definition)` 的结构化契约注册。
+- **决策**：`host/tools.ts` 手写完整的 tool definition：`name` / `description` / `parameters`（逐属性 `required:true`） / `output:{schema, render}` / `execute`。`output.schema` 只使用 DSH 支持的 JSON Schema 子集（`type/properties/required/additionalProperties/items/enum/const/oneOf`），并用真实 `assertSupportedJsonSchema` + `validateJsonSchemaValue` 校验过 schema 与真实输出值。
+- **边界**：只读 `session_butler_list` / `session_butler_detail`；**任何写操作都不注册为工具**，避免模型误删/误移。工具在 `ctx.inject(['tools'], …)` 中注册，缺失时插件其余能力不受影响。
+- **实现（M3）**：`registerButlerTools(tools, read)` 返回 disposer；测试直接对 `createListTool/createDetailTool` 断言参数校验、过滤转发、文本渲染与截断说明。
+
+### D-019 列表/详情数据源：stat + 事件折叠，不依赖 projection cache · accepted
+
+- **背景**：rc.2 release 组合与 Web 组合的 projection 键不一致（`sessionStats`/`tokenUsage` 等不可假定存在）；详情又需要轮数/token/大小等统计。
+- **决策**：
+  - 列表 = `sessionPersistence.list()` + live `sessions.list()`/`agents.list()` + best-effort `readTitleSnapshots` + `workspaceRegistry` 的归档/置顶集合；过滤/排序/分页在 Host 侧。
+  - 详情 = `sessionPersistence.stat(id)` 提供 header/formatStatus/eventCount/sizeBytes；`traceSession` 提供血缘；**best-effort** `observeSession({projectionMode:'none'})` 后折叠原始事件得到统计。
+  - 事件读取失败或迁移中 → `enrichment:{status:'partial',reason}`，详情仍返回 header/lineage；绝不因统计失败而让详情整体失败。
+- **实现（M3）**：`src/host/read-model.ts`（`summarizeSessionEvents` 防御性窄化，跳过畸形事件）+ `service.detail`/`listSessions`；桥/工具/页面共用。
+
+### D-020 批量操作：逐项独立、去重、级联 no-op 成功 · accepted
+
+- **决策**：`trashMany` / `restoreMany` 接收 1–50 个非空字符串 id（Host 侧去重）；每项独立执行，单项失败写入 `items[].error`，不影响其余项；`moved`/`failed` 为聚合结果。级联已提前移走的 id 在后续显式条目中返回 `ok:true, moved:[]` 的 no-op，而不是重复失败。
+- **实现（M3）**：桥 `trash-many`/`restore-many`；Web 页多选 + 批量确认；测试覆盖部分失败、重复/级联重叠、空数组、超 50、混合类型。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |
@@ -136,10 +157,12 @@
 
 ## 发布门禁（MVP acceptance checklist）
 
-- [x] `pnpm run verify` 全绿（typecheck + build + 35 tests + package validation）
+- [x] `pnpm run verify` 全绿（typecheck + build + 52 tests + package validation）
 - [x] M1 删除核心在 fixture 上通过：trash/restore/purge/级联/锁冲突/运行中拒绝（`tests/m1-delete.test.mjs`）
 - [x] M2 桥/页面：临时 profile 实测 bundle 分发、认证 401、status/list/detail 与领域错误；页面 SSR + 装配测试通过。
       *未完成*：真实浏览器内点击/截图验证（留 M4 发布验收）。
+- [x] M3 只读工具 + 批量 + 详情补全：工具 schema 用真实 DSH 校验器验证；`m3-read-model`/`m3-tools`/bridge/client 用例覆盖列表分页、详情部分 enrichment、批量逐项结果、批量 UI 渲染。
+- [x] M3 临时 profile（`tl-m3`，已删除）实测：`list` 分页/`truncated`、真实大会话 `detail`（turns/steps/events/token/title/血缘）完整、`trash-many` 非法负载 400、`restore-many` 逐项 `trash-not-found`；启动无工具 schema 警告。
 - [ ] 临时 profile 用绝对路径 link 安装并 `--dump-config` 校验（`docs/publishing.md` 阶段 C；M1/M2 已手工跑通，需固化为脚本）
 - [ ] `npm pack` 产物在干净目录安装后 `exports` 全部可解析（阶段 B）
 - [ ] locale（zh/en）、icon、detail 文档在插件页正确显示

@@ -14,6 +14,7 @@ function fakeHost({ home, headers }) {
   const effects = []
   const routes = []
   const injections = []
+  const tools = []
   const ctx = {
     get(name) {
       switch (name) {
@@ -34,7 +35,14 @@ function fakeHost({ home, headers }) {
             },
           }
         case 'sessionPersistence':
-          return { async open() { return { async close() {} } }, async stat() { return {} } }
+          return {
+            async open() { return { async close() {} } },
+            async stat(id) {
+              const found = headers[id]
+              return found === undefined ? undefined : { header: found }
+            },
+            async list() { return Object.values(headers).map(header => ({ header })) },
+          }
         case 'sessions':
           return { get: () => undefined }
         case 'agents':
@@ -45,6 +53,8 @@ function fakeHost({ home, headers }) {
           return { register(route) { routes.push(route); return () => {} } }
         case 'connection':
           return { requestRejection() { return undefined } }
+        case 'tools':
+          return { register(definition) { tools.push(definition); return () => {} } }
         default:
           return undefined
       }
@@ -62,7 +72,7 @@ function fakeHost({ home, headers }) {
       return callback(this)
     },
   }
-  return { ctx, provided, commands, effects, routes, injections }
+  return { ctx, provided, commands, effects, routes, injections, tools }
 }
 
 test('apply exposes the trash service and registers /session-butler', async () => {
@@ -77,11 +87,12 @@ test('apply exposes the trash service and registers /session-butler', async () =
 
     const service = fake.provided.get('sessionButler')
     assert.ok(service instanceof SessionButlerService)
-    // One effect registers the command, one mounts the HTTP bridge.
-    assert.equal(fake.effects.length, 2)
+    // One effect each for the command, the HTTP bridge, and the read-only tools.
+    assert.equal(fake.effects.length, 3)
     assert.equal(fake.commands.length, 1)
     assert.equal(fake.commands[0].name, 'session-butler')
-    assert.deepEqual(fake.injections, [['webServer', 'connection']])
+    assert.deepEqual(fake.injections, [['webServer', 'connection'], ['tools']])
+    assert.deepEqual(fake.tools.map(tool => tool.name), ['session_butler_list', 'session_butler_detail'])
     assert.equal(fake.routes.length, 1)
     assert.equal(fake.routes[0].path, '/session-butler/api')
     assert.equal(fake.routes[0].kind, 'prefix')
@@ -91,7 +102,7 @@ test('apply exposes the trash service and registers /session-butler', async () =
     assert.match(listed.text, /empty/)
 
     const trashed = await fake.commands[0].handler({ rawInput: 'trash session-a', agent: { session: { id: 'session-current' } } })
-    assert.equal(trashed.kind, 'success')
+    assert.equal(trashed.kind, 'success', trashed.text)
     assert.match(trashed.text, /session-a/)
   } finally {
     await rm(home, { recursive: true, force: true })

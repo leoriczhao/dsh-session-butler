@@ -48,17 +48,54 @@ export interface SessionLineageTraceLike {
   readonly complete?: boolean
 }
 
+/** One cloned raw session event (only the fields Threadloom reads). */
+export interface SessionEventLike {
+  readonly type?: string
+  readonly seq?: number
+  readonly time?: number
+  readonly data?: unknown
+}
+
 /** One live-preferred observation (rc.2 `SessionObservation`; dispose via Symbol). */
 export interface SessionObservationLike {
   readonly header: SessionHeaderLike
+  /** Fork-inherited prefix length, when reported. */
+  readonly inheritedEventCount?: number
+  /** Last observed event seq, or -1 for an empty log. */
+  readonly cursor?: number
+  /** Complete raw log; only materialized after a reader asks for it. */
+  readonly events?: readonly SessionEventLike[]
   dispose?(): unknown
   readonly [Symbol.dispose]?: () => unknown
 }
 
+/** One successful title observation (rc.2 `SessionTitleObservationResult`). */
+export interface SessionTitleObservationLike {
+  readonly sessionId: string
+  readonly status: 'fulfilled' | 'rejected'
+  readonly value?: {
+    readonly session: SessionHeaderLike
+    readonly title?: { readonly title?: string; readonly updatedAt?: number }
+  }
+}
+
 /** The `sessionQuery` methods Threadloom consumes. */
 export interface SessionQueryPort {
-  observeSession(sessionId: string, options?: { signal?: AbortSignal }): Promise<SessionObservationLike>
+  observeSession(sessionId: string, options?: { signal?: AbortSignal; projectionMode?: 'all' | 'none' }): Promise<SessionObservationLike>
   traceSession(sessionId: string, signal?: AbortSignal): Promise<SessionLineageTraceLike>
+  /** Batch title read; absent on compositions whose query service predates it. */
+  readTitleSnapshots?(
+    sessionIds: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<readonly SessionTitleObservationLike[]>
+}
+
+/** One stored-session snapshot (rc.2 `SessionPersistenceSnapshot`). */
+export interface SessionPersistenceSnapshotLike {
+  readonly header: SessionHeaderLike
+  readonly formatStatus?: 'current' | 'migration-required'
+  readonly eventCount?: number
+  readonly sizeBytes?: number
 }
 
 /** The `sessionPersistence` methods Threadloom consumes. */
@@ -67,17 +104,33 @@ export interface SessionPersistencePort {
   stat(
     sessionId: string,
     options?: { signal?: AbortSignal },
-  ): Promise<{ formatStatus?: 'current' | 'migration-required'; sizeBytes?: number } | undefined>
+  ): Promise<SessionPersistenceSnapshotLike | undefined>
+  /** Every stored session visible to this process, in no promised order. */
+  list(options?: { signal?: AbortSignal }): Promise<readonly SessionPersistenceSnapshotLike[]>
 }
 
-/** Live-session lookup (`ctx.sessions.get`). */
+/** One live Session object (only the fields Threadloom reads). */
+export interface LiveSessionLike {
+  readonly id?: string
+  readonly header?: SessionHeaderLike
+}
+
+/** Live-session access (`ctx.sessions`). */
 export interface SessionsPort {
   get(sessionId: string): unknown
+  list?(): readonly (LiveSessionLike | unknown)[]
 }
 
-/** Live-agent lookup (`ctx.agents.get`). */
+/** One live Agent object (only the fields Threadloom reads). */
+export interface LiveAgentLike {
+  readonly sessionId?: string
+  readonly status?: string
+}
+
+/** Live-agent access (`ctx.agents`). */
 export interface AgentsPort {
   get(sessionId: string): unknown
+  list?(): readonly (LiveAgentLike | unknown)[]
 }
 
 /**
@@ -90,6 +143,9 @@ export interface WorkspaceRegistryPort {
   unarchiveSession(sessionId: string): Promise<void>
   pinSession(sessionId: string): Promise<void>
   unpinSession(sessionId: string): Promise<void>
+  /** Logical archive set; absent on compositions whose registry predates the getter. */
+  readonly archivedSessionIds?: readonly string[]
+  readonly pinnedSessionIds?: readonly string[]
 }
 
 /** One `/session-butler` command result (rc.2 `CommandResult`). */
@@ -134,6 +190,44 @@ export interface WebServerPort {
  */
 export interface ConnectionPort {
   requestRejection(request: { headers: import('node:http').IncomingHttpHeaders }): 401 | 403 | undefined
+}
+
+/** One author-facing tool parameter (rc.2 `ParameterSchemaSpec` property). */
+export interface ButlerToolParameter {
+  readonly type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
+  readonly description?: string
+  readonly required?: true
+  readonly enum?: readonly (string | number | boolean | null)[]
+  readonly items?: ButlerToolParameter
+  readonly properties?: Readonly<Record<string, ButlerToolParameter>>
+  readonly additionalProperties?: boolean
+}
+
+/** One model-facing tool result block. */
+export interface ButlerToolTextContent {
+  readonly type: 'text'
+  readonly text: string
+}
+
+/**
+ * One model-facing tool definition, structurally compatible with rc.2
+ * `ToolDefinition`. Threadloom builds this without importing `@deepseek-ai/dsh-tools`,
+ * mirroring how published third-party plugins register tools.
+ */
+export interface ButlerToolDefinition {
+  readonly name: string
+  readonly description: string
+  readonly parameters: Readonly<Record<string, ButlerToolParameter>>
+  readonly output: {
+    readonly schema: Readonly<Record<string, unknown>>
+    render(args: unknown, value: unknown): readonly ButlerToolTextContent[]
+  }
+  execute(args: unknown, exec: { readonly signal?: AbortSignal }): unknown
+}
+
+/** The `tools` registry subset Threadloom consumes. */
+export interface ToolsPort {
+  register(definition: ButlerToolDefinition): () => void
 }
 
 /** Host context surface used by `apply` (Cordis `Context` subset). */

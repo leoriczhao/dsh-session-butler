@@ -29,7 +29,16 @@ async function makeService() {
         return { target: { header: headers[id] }, ancestors: [], descendants: [], complete: true }
       },
     },
-    persistence: { async open() { return { async close() {} } }, async stat() { return {} } },
+    persistence: {
+      async open() { return { async close() {} } },
+      async stat(id) {
+        const found = headers[id]
+        return found === undefined ? undefined : { header: found }
+      },
+      async list() {
+        return Object.values(headers).map(header => ({ header }))
+      },
+    },
     retentionDays: 30,
     cascadeSubagents: true,
     permanentDelete: 'confirm',
