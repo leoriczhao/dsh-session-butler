@@ -124,7 +124,12 @@ dsh --profile tl-iso --no-open --port 3109
 | 永久删除 | 按钮按默认配置禁用并给出原因提示 |
 | 控制台 | 无 console error / pageerror |
 
-证据截图（隔离 home，单个测试会话）：
+插件页（`meta.detail`、图标、名称/版本/id）也在同一隔离 profile 实测：详情页完整
+渲染 `docs/usage.md`，组件状态 `1 total · 1 running`。
+
+![插件详情页](evidence/plugin-detail.png)
+
+页面证据截图（隔离 home，单个测试会话）：
 
 ![会话管理页](evidence/web-page.png)
 ![移入回收站确认](evidence/web-trash-confirm.png)

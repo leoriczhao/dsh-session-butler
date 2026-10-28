@@ -166,7 +166,7 @@
 - [x] 临时 profile 用绝对路径 link 安装并 `--dump-config` 校验：隔离 `DSH_HOME=/tmp/tl-m4/home` 的 `tl-iso` profile 实测（命令与结果固化在 `docs/publishing.md` 阶段 C）。
 - [x] `npm pack` 产物在干净目录安装后 `exports` 全部可解析：安装 optional peer（`@deepseek-ai/cordis@4.0.5`、`@deepseek-ai/schemastery@3.18.5`）后 Host 导入成功；client bundle 在 `window.__ModuleLoader__` 沙箱内注册成功。
 - [x] 隔离 `DSH_HOME` 内完整写入闭环：页面移入回收站（`0` sessions / `1` trash entry）→ 恢复（`0` trash / `1` session），永久删除按默认配置禁用；证据 `docs/evidence/web-*.png`。
-- [ ] locale（zh/en）、icon、detail 文档在插件页正确显示（页面 zh/en 已目测；插件详情页/图标未单独验收）
+- [x] locale（zh/en）、icon、detail 文档在插件页正确显示：隔离 profile 的 Plugins 页实测 Threadloom 图标/名称/版本/id/描述，详情页渲染 `docs/usage.md` 全文；管理页与导航在 zh/en 浏览器 locale 下均正常（证据 `docs/evidence/plugin-detail.png`）。
 - [x] running/archived/subagent 边界：M1 running 拒绝 + 归档不级联、M3 detail 子代理 lineage 已覆盖；`fork` 按 D-015 延期，不阻塞 0.1.0。
 - [x] CHANGELOG、版本号 `0.1.0`、`engines.dsh` 与本地 DSH `0.2.1-rc.3` 一致；`npm latest` 仍为 rc.2 且下限覆盖 rc.2。
 - [ ] 发布阻塞项：`npm whoami` 未登录；`package.json` 的 `author`/`repository`/`homepage`/`bugs` 仍为占位/省略，待用户提供 npm 账号与仓库 URL。
