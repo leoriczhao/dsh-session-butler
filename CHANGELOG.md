@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(nothing yet — post-0.1.0 work will be collected here.)_
+
+## [0.1.0] - 2026-10-28
+
 ### Added — M3 read-only tools, batch operations, enriched detail (2026-10-28)
 
 - Host read model (`src/host/read-model.ts`): header snapshots, lineage views,
@@ -127,9 +131,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `decisions.md` — resolved and open product/technical decisions.
   - `publishing.md` — release runbook.
 
-## [0.1.0] - planned
+### Release — npm and GitHub (2026-10-28)
 
-First functional release: unified session management page (list/search/filter/detail),
-trash-first delete with subagent cascade, running-session protection, and a
-`/threadloom` command. Not published until the MVP acceptance checklist in
-`docs/decisions.md` is met.
+- Published `dsh-session-butler@0.1.0` to npm with `latest`; registry metadata
+  verified (`dsh.bundle.patch`, `dsh.client`, `engines.dsh`, repository/homepage/
+  bugs, optional peers).
+- A fresh isolated `DSH_HOME` profile installed the published version with
+  `dsh plugin --profile tl-reg add dsh-session-butler@0.1.0`; `--dump-config`
+  contains row `session-butler`, and the Web page plus plugin detail page boot
+  with no console/page errors.
+- Git tag `v0.1.0` and the GitHub release point at the published source tree.

@@ -13,7 +13,7 @@
 - **批量**：会话与回收站列表均支持多选，批量移入回收站 / 批量恢复逐项返回结果；
 - **Agent 工具**：`session_butler_list` / `session_butler_detail` 让模型在无 UI 场景读取会话列表与详情（只读，不能删除）。
 
-> **版本状态（0.1.0）**：M1 + M2 + M3 已完成——Host 删除核心、`/session-butler` 命令、Web 管理页（列表/筛选/批量/详情/回收站/删除确认）、只读 agent 工具均可用；M4 本地发布验收已通过（真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装）。源码仓库：<https://github.com/leoriczhao/dsh-session-butler>；npm 发布仍待账号登录，因此暂不发布。
+> **版本状态（0.1.0，已发布）**：M1–M4 已完成——Host 删除核心、`/session-butler` 命令、Web 管理页（列表/筛选/批量/详情/回收站/删除确认）、只读 agent 工具均可用；真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 全新安装均已验证。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
 
 ## 安装
 

@@ -146,6 +146,14 @@ declared`），修复见 `CHANGELOG.md` 的 “real-browser activation” 段；
 npm publish          # prepack 自动 typecheck + build；scoped 包需 --access public（本项目 unscoped）
 ```
 
+若 npm 账号要求 2FA，非交互执行 `npm publish` 会返回 `403 Two-factor auth... required`。
+在交互终端直接执行 `npm publish` 并输入 OTP 即可；自动化流程可用
+`npm stage publish .` 先入 stage（无需 OTP），再由维护者在终端执行
+`npm stage list` / `npm stage approve <stage-id>`（approve 需要 OTP，staged 包
+在批准前不会出现在 `latest`）。首次 staged 发布会在 registry 生成
+`0.0.0-stage` 占位版本，`latest` 不受影响；如需清理占位版本，需 2FA 后
+`npm unpublish dsh-session-butler@0.0.0-stage`。
+
 发布后核对 registry 元数据（**`dsh` 字段必须在 npm 上可见**，更新检查依赖它；`repository`/`homepage`/`bugs` 应显示本仓库）：
 
 ```bash
@@ -164,6 +172,19 @@ dsh --profile tl-fresh                          # 启动并复跑阶段 C 的 UI
 
 再验证一次更新路径（可选但推荐）：安装上一版本 → Web 插件页 Update 或 `plugin_manager updateBundle` → 确认 `listVersions` 能列出、精确保存版本；无 HMR 的 profile 需重启。
 
+### 阶段 D/E 实测记录（2026-10-28）
+
+- `npm publish` 将 `dsh-session-butler@0.1.0` 发布为 `latest`（发布时账号要求 2FA，
+  最终在交互终端完成 OTP）。
+- `npm view dsh-session-butler@0.1.0` 核对通过：`engines.dsh`、`dsh.bundle.patch`、
+  `dsh.client`、`license=MIT`、`repository/homepage/bugs` 指向本仓库、optional peers。
+- 隔离 `DSH_HOME=/tmp/tl-reg/home`、profile `tl-reg`：
+  `dsh plugin --profile tl-reg add dsh-session-butler@0.1.0` →
+  `--dump-config` 含 `id: session-butler / name: dsh-session-butler` →
+  启动 3110 端口，Web 管理页显示“0 个会话”，插件详情页渲染 usage 全文，
+  console/pageerror 均为空。
+- `v0.1.0` annotated tag 与 GitHub Release 已推送。
+
 ## 发布后
 
 - 在仓库 Release 附上 `npm pack` 的 tgz（可选；git 安装场景需要 `prepare`，本项目未启用，推荐直接用 registry）。
@@ -172,4 +193,4 @@ dsh --profile tl-fresh                          # 启动并复跑阶段 C 的 UI
 
 ## 本项目的发布门禁
 
-发布 `0.1.0` 前必须满足 [`decisions.md`](./decisions.md) 的「发布门禁」清单（MVP 功能、边界测试、link/registry 双验证、展示资源），**基础包阶段的 `0.1.0` 不发布**。
+发布 `0.1.0` 前必须满足 [`decisions.md`](./decisions.md) 的「发布门禁」清单（MVP 功能、边界测试、link/registry 双验证、展示资源）。**`0.1.0` 已于 2026-10-28 发布并完成 registry 复验。** 后续版本沿用同一 runbook；注意 npm README 是发布 tarball 快照，发布后对 README/文档的更新需要下一个版本才能反映到 npm 页面。

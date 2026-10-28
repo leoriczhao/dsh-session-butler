@@ -170,4 +170,7 @@
 - [x] running/archived/subagent 边界：M1 running 拒绝 + 归档不级联、M3 detail 子代理 lineage 已覆盖；`fork` 按 D-015 延期，不阻塞 0.1.0。
 - [x] CHANGELOG、版本号 `0.1.0`、`engines.dsh` 与本地 DSH `0.2.1-rc.3` 一致；`npm latest` 仍为 rc.2 且下限覆盖 rc.2。
 - [x] 仓库与元数据：源码已托管到 `https://github.com/leoriczhao/dsh-session-butler`，`package.json` 补齐 `author`/`repository`/`homepage`/`bugs`，README 文档链接改为 GitHub 绝对地址。
-- [ ] 发布阻塞项：`npm whoami` 未登录，待用户在本机 `npm login` 后执行发布与 registry 复验。
+- [x] 发布 `0.1.0`（2026-10-28）：npm `latest` 指向 `0.1.0`；`npm view` 核对 `engines`/`dsh`/`repository`/`homepage`/`bugs`/`license` 全部正确。
+- [x] registry 全新安装复验：隔离 `DSH_HOME` 的 `tl-reg` profile 用 `dsh plugin add dsh-session-butler@0.1.0` 安装，`--dump-config` 含 `session-butler` 行，Web 管理页与插件详情页启动无 console/page error。
+- [x] Git tag `v0.1.0` + GitHub Release 已发布；`main` 分支与 `origin` 同步。
+- 备注：npm README 是发布 tarball 的只读快照，发布后更新的 README 状态不会回写 0.1.0 页面；如需刷新，用 0.1.1 等下一个版本携带。
