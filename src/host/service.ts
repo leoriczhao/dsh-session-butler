@@ -32,10 +32,11 @@ export interface SessionButlerOptions {
   readonly trashRoot: string
   readonly query: SessionQueryPort
   readonly persistence: SessionPersistencePort
-  readonly sessions?: SessionsPort
-  readonly agents?: AgentsPort
+  /** Live services may be late-bound: pass a getter when activation order is unknown. */
+  readonly sessions?: SessionsPort | (() => SessionsPort | undefined)
+  readonly agents?: AgentsPort | (() => AgentsPort | undefined)
   /** Optional workspace services: absent in headless / ACP compositions. */
-  readonly workspace?: WorkspaceRegistryPort
+  readonly workspace?: WorkspaceRegistryPort | (() => WorkspaceRegistryPort | undefined)
   readonly retentionDays: number
   readonly cascadeSubagents: boolean
   readonly permanentDelete: 'disabled' | 'confirm'
@@ -82,6 +83,21 @@ export interface TrashListEntry {
   }
 }
 
+/** Detail shown before a destructive action (and reusable by M3's tools). */
+export interface SessionDetail {
+  readonly id: string
+  readonly headerSnapshot: {
+    readonly id: string
+    readonly cwd?: string
+    readonly createdAt?: number
+    readonly parentSession?: string
+    readonly origin?: 'subagent'
+  }
+  readonly formatStatus?: 'current' | 'migration-required'
+  /** Ids of subagent descendants that a cascade would also delete. */
+  readonly descendantIds: readonly string[]
+}
+
 /** Trash listing plus unparsable leftovers. */
 export interface TrashListResult {
   readonly entries: readonly TrashListEntry[]
@@ -116,6 +132,19 @@ export class SessionButlerService {
   private readonly trashStore: TrashStore
   private readonly now: () => number
 
+  /** Late-bound live lookups (see {@link SessionButlerOptions}). */
+  private get sessions(): SessionsPort | undefined {
+    return typeof this.options.sessions === 'function' ? this.options.sessions() : this.options.sessions
+  }
+
+  private get agents(): AgentsPort | undefined {
+    return typeof this.options.agents === 'function' ? this.options.agents() : this.options.agents
+  }
+
+  private get workspace(): WorkspaceRegistryPort | undefined {
+    return typeof this.options.workspace === 'function' ? this.options.workspace() : this.options.workspace
+  }
+
   constructor(private readonly options: SessionButlerOptions) {
     this.locator = new SessionLocator(options.sessionsRoot)
     this.trashStore = new TrashStore(options.sessionsRoot, options.trashRoot)
@@ -125,6 +154,43 @@ export class SessionButlerService {
   /** Root directory of the trash (for diagnostics and the command surface). */
   get trashRoot(): string {
     return this.options.trashRoot
+  }
+
+  /** Read-only configuration snapshot for UIs (no secrets, no paths). */
+  get config(): {
+    readonly retentionDays: number
+    readonly cascadeSubagents: boolean
+    readonly permanentDelete: 'disabled' | 'confirm'
+    readonly workspaceAvailable: boolean
+  } {
+    return {
+      retentionDays: this.options.retentionDays,
+      cascadeSubagents: this.options.cascadeSubagents,
+      permanentDelete: this.options.permanentDelete,
+      workspaceAvailable: this.workspace !== undefined,
+    }
+  }
+
+  /**
+   * Describe one live-or-cold session without activating an Agent.
+   * @param sessionId - session to describe.
+   * @returns header snapshot, format status and subagent descendants a cascade would include.
+   */
+  async detail(sessionId: string): Promise<SessionDetail> {
+    const record = await this.readRootRecord(sessionId)
+    const descendants = await this.readDescendants(sessionId)
+    return {
+      id: sessionId,
+      headerSnapshot: {
+        id: record.header.id,
+        ...(record.header.cwd === undefined ? {} : { cwd: record.header.cwd }),
+        ...(record.header.createdAt === undefined ? {} : { createdAt: record.header.createdAt }),
+        ...(record.header.parentSession === undefined ? {} : { parentSession: record.header.parentSession }),
+        ...(record.header.origin === undefined ? {} : { origin: record.header.origin }),
+      },
+      ...(record.formatStatus === undefined ? {} : { formatStatus: record.formatStatus }),
+      descendantIds: descendants.map(item => item.header.id),
+    }
   }
 
   /** List trashed sessions. Expired entries are reported but never auto-purged (Q1). */
@@ -217,7 +283,7 @@ export class SessionButlerService {
       if (!succeeded) {
         for (const id of archived) {
           try {
-            await this.options.workspace?.unarchiveSession(id)
+            await this.workspace?.unarchiveSession(id)
           } catch {
             // Best-effort state restoration after a failed trash.
           }
@@ -298,8 +364,7 @@ export class SessionButlerService {
 
   /** Whether this process holds the session (live Session or Agent). */
   private isLive(sessionId: string): boolean {
-    return this.options.sessions?.get(sessionId) !== undefined
-      || this.options.agents?.get(sessionId) !== undefined
+    return this.sessions?.get(sessionId) !== undefined || this.agents?.get(sessionId) !== undefined
   }
 
   /**
@@ -309,7 +374,7 @@ export class SessionButlerService {
    */
   private async settleRunning(sessionId: string, archived: string[]): Promise<void> {
     if (!this.isLive(sessionId)) return
-    const workspace = this.options.workspace
+    const workspace = this.workspace
     if (workspace === undefined) {
       throw new ButlerError(
         'session-running',
@@ -361,7 +426,7 @@ export class SessionButlerService {
 
   /** Drop archived/pinned state after a successful move; best-effort by design. */
   private async clearWorkspaceState(sessionId: string): Promise<void> {
-    const workspace = this.options.workspace
+    const workspace = this.workspace
     if (workspace === undefined) return
     try {
       await workspace.unarchiveSession(sessionId)

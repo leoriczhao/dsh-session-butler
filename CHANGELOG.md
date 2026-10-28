@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — M2 Web management page and bridge (2026-10-28)
+
+- Host: same-origin POST bridge at `/session-butler/api` (`status`, `detail`,
+  `trash`, `restore`, `purge`, `list-trash`) with `connection` browser-trust
+  admission, 64 KiB body limit, and the `{ok, value|error}` envelope; domain
+  failures stay HTTP 200 so the page renders stable codes.
+- Client: keyed `main` panel + `sidebar.panellist` entry, session list with
+  title/path/id filter, workspace/archived/subagent filters, trash tab, delete
+  confirmation with cascade count, purge confirmation by exact id, zh/en locale
+  dictionaries, error-code rendering; session store refresh after mutations.
+- Late binding: `webServer`/`connection` mounted through optional
+  `ctx.inject`, `sessions`/`agents`/`workspaceRegistry` resolved lazily so the
+  plugin also activates without the Web app and `workspaceAvailable` reflects
+  the live composition.
+- Client build entry switched to `src/client/index.tsx`; bundle is 35 KB.
+- Tests: 11 new cases (bridge protocol/auth/envelope + client registration/
+  disposal/SSR render); suite now 35.
+- Verified in a temporary Web profile: module graph lists the bundle, bundle is
+  served (35 KB), bridge rejects unauthenticated requests (401) and returns
+  real session detail/domain errors; temp profile removed afterwards.
+
 ### Added — M1 trash core (Host-side delete, 2026-10-27)
 
 - `SessionButlerService` (exposed as `ctx.sessionButler`): trash-first delete with

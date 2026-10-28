@@ -6,12 +6,12 @@
 
 **Threadloom（`dsh-session-butler`）** 是 DeepSeek Harness 的会话管理插件。它把散落在各个 workspace 里的会话收拢成一个可检索、可整理、可恢复的统一管理面：
 
-- **总览**：跨 workspace 平铺列出会话，按 workspace / 时间 / preset / 模型 / 运行状态过滤；
-- **详情**：cwd、创建/更新时间、轮数、token、日志大小、preset、子代理血缘；
+- **总览（Web 管理页）**：跨 workspace 平铺列出会话，按标题/路径/id 过滤，按 workspace / 已归档 / 子代理筛选；
+- **详情**：行内展示 cwd、更新时间、归属 workspace、运行/空白/归档/迁移状态；删除前可看到级联子代理数量（轮数/token/血缘树在 M3）；
 - **整理**：改名、置顶、归档（复用 DSH 已有能力，管理面集中操作）；
 - **删除**：回收站优先——先移入回收站，可恢复；确认后才永久删除，并可选级联删除子代理会话。
 
-> **版本状态（0.1.0）**：M1 已完成——Host 侧删除核心（回收站/恢复/永久删除/子代理级联）与 `/session-butler` 命令可用；Web 管理页（M2）与 agent 工具（M3）尚未完成，因此暂不发布。
+> **版本状态（0.1.0）**：M1 + M2 已完成——Host 删除核心、`/session-butler` 命令、Web 管理页（列表/筛选/回收站/删除确认）均可用；agent 工具与批量操作（M3）、发布验收（M4）尚未完成，因此暂不发布。
 
 ## 安装
 
@@ -28,6 +28,14 @@ dsh plugin --profile <profile> add dsh-session-butler@<version>
 ```bash
 dsh plugin --profile <profile> remove dsh-session-butler
 ```
+
+## Web 管理页（M2）
+
+装好插件并启动 Web profile 后，侧栏会出现「会话管理」入口；页面分两个标签页：
+
+- **会话**：列表 + 过滤（标题/路径/id、workspace、显示已归档/子代理）；行内「打开」跳转会话，「移入回收站」先弹出确认（运行中会提示先停止，迁移中的会话会被拒绝，可勾选级联子代理）。
+- **回收站**：列出已删除会话（删除时间、原路径、是否过保留期、级联关系）；「恢复」直接移回原目录；「永久删除」需要配置 `permanentDelete: confirm` 并再次输入完整 session id。
+- 顶部「刷新」会同时刷新会话列表与回收站；所有失败都以稳定错误码显示（如 `session-locked`、`permanent-delete-disabled`）。
 
 ## 命令（M1）
 

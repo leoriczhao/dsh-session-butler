@@ -158,25 +158,41 @@ purge(id):   trash 记录存在 → rm -rf trash/<id> → 删除记录（permane
 - Host：`ctx.webServer.register({ kind: 'prefix', path: '/session-butler/api', handler })`；handler 首行 `ctx.connection.requestRejection(req)`，随后只接受 owner 连接、`POST`、`application/json`、限长 body（如 64 KiB）；
 - Client：**document-relative** `fetch('session-butler/api/trash', ...)`（无前导 `/`，兼容反向代理挂载）；
 - 信封：`{ ok: true, value } | { ok: false, error: { code, message, details? } }`；
-- 方法（M1）：`list` / `detail` / `trash` / `restore` / `purge` / `listTrash`；
+- 方法（M2 已实现）：`status` / `detail` / `trash` / `restore` / `purge` / `list-trash`；
+- 协议错误用 400/404/405/413（同信封）；领域错误固定 HTTP 200 + `ok:false`，页面直接展示稳定错误码；
 - 不做流式；不做通用 RPC；所有参数在 Host 侧重新校验（客户端不可信）。
+
+**实现备注（M2）**：
+
+- 桥在 `ctx.inject(['webServer','connection'], scope => mountBridge(scope, service))` 里挂载：headless/ACP 组合没有这两个服务，插件仍保留命令面；Web 组合在服务就绪后才注册前缀路由。
+- `sessions`/`agents`/`workspaceRegistry` 用 `() => ctx.get(...)` 延迟取值，避免 Web 组合的激活顺序导致插件启动时服务尚未存在（M2 实测发现并修复）。
+- 客户端 `fetch('session-butler/api/<method>')` 无前导 `/`；认证由 `connection.requestRejection({headers})` 完成，未认证请求实测 401。
 
 ### 3.5 命令与工具面
 
-- 命令：`/session-butler list|show|trash|restore|purge|archive|unarchive`（`ctx.commands.register`），让无管理页的场景（CLI/其他客户端）也能用；
-- 工具：`session_butler_list` / `session_butler_detail` 只读；写操作**不**注册为 agent 工具，避免模型误删。
+- 命令（M1 已实现）：`/session-butler list|trash|restore|purge`（`ctx.commands.register`），让无管理页的场景也能用；归档/取消归档直接复用官方 UI；
+- 工具（M3）：`session_butler_list` / `session_butler_detail` 只读；写操作**不**注册为 agent 工具，避免模型误删。
 
-## 4. Client 半架构（目标）
+## 4. Client 半架构（M2 已实现）
 
 ```
-src/client/index.ts        # apply/inject：slots/locale/sessions/workspaces/uiSession/uiWorkspace/layout/remote...
-   ├── ctx.slots.inject('main', () => ctx.slots.register({name:'main', key:'session-butler', locale}, Page))
-   ├── ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({name:'sidebar.panellist', id:'session-butler', order, label, locale}, Icon))
-   └── ctx.slots.inject('shell.overlay', ...)   # 确认框/重命名框
-src/client/page.tsx        # 列表/筛选/详情抽屉/批量选择；布局抄 ui-plugin-manager
-src/client/data.ts         # standard hooks + sessions/workspaces/remote 组合
-src/client/bridge.ts       # document-relative fetch 封装（错误码 → 文案）
+src/client/index.tsx       # apply/inject：slots/locale/uiWorkspace/sessions
+   └── ctx.slots.inject('main', () => {
+         offPanel = ctx.slots.register({name:'main', key:'session-butler', locale, inject: actions}, Page)
+         offRow   = ctx.slots.register({name:'sidebar.panellist', id:'session-butler', order, label, locale}, Icon)
+         return () => { offRow(); offPanel() }
+       })
+src/client/page.tsx        # 列表/筛选/回收站/删除确认/永久删除确认（页内 fixed 对话框）
+src/client/bridge.ts       # document-relative fetch + 网关信封 + BridgeError
+src/client/locale.ts       # NS='session-butler' + zh/en 字典（ctx.locale.register 运行时注册）
+src/client/contract.ts     # 本地结构化端口（不 import 任何 @deepseek-ai/dsh-* 包）
 ```
+
+**M2 实现备注**：
+
+- page 与 row 放在**同一个 `slots.inject('main')` 回调**里注册，row 不可能先于 page 存在；卸载逆序（先 row 后 panel）。
+- 删除/永久删除确认框先用页内 `position: fixed` 对话框（状态与页面同源，避免为浮层引入跨组件 store）；若 M3 需要从会话列表行直接触发确认，再迁到 `shell.overlay`。
+- 数据刷新：trash/restore 后调用 `ctx.sessions.refresh()`；回收站列表由桥重新拉取。改名/置顶/归档/取消归档不在本页重复实现（官方 UI 已覆盖）。
 
 关键不变量：
 
@@ -184,7 +200,7 @@ src/client/bridge.ts       # document-relative fetch 封装（错误码 → 文�
 2. 面板 key / sidebar id 用 `session-butler`，与包名命名空间隔离；`PANEL_ID` 来自 `shared/identity.ts`。
 3. 页面自己负责布局（`main` 槽只给中栏容器）：照抄 Plugin Manager 的 `page`/`pageBody` 骨架与主题 token（`--dsw-alias-*`）。
 4. client bundle 只能 `require` 11 个 platform seed + `dsh.client.external`；其他宿主能力一律走 Cordis 服务；首版单文件，不用动态 `import()` 拆包。
-5. 文案走 Client locale 服务 + 包 `locale/*.json` 双层；中英文都要齐。
+5. 文案走 Client locale 服务（运行时 `ctx.locale.register`）+ 包 `locale/*.json`（插件页 meta）；中英文都要齐。
 
 ## 5. 里程碑
 
@@ -192,8 +208,8 @@ src/client/bridge.ts       # document-relative fetch 封装（错误码 → 文�
 |---|---|---|
 | **M0（已完成）** | 包脚手架、构建/打包/校验管线、配置、展示资源、三份调研 + 架构/决策/发布文档 | `pnpm run verify` 全绿；`npm pack` 清单闭环 |
 | M1 | Host 删除核心：capabilities/resolve/trash/delete + storageDomain + 单元/集成测试（临时 `DSH_HOME` fixture） | 不接 UI 也能通过临时 profile 命令验证 trash/restore/purge/级联 |
-| M2 | Web 管理页：main panel + sidebar 入口 + bridge 客户端 + 列表/筛选/详情 | 临时 profile 安装后页面可用；危险操作确认/错误码可见 |
-| M2.5/M3 | 只读 agent 工具（list/detail）+ 批量操作 + 回收站页面 | 无 UI 场景可用；模型只能读 |
+| **M2（已完成 2026-10-28）** | Web 管理页：main panel + sidebar 入口 + 同源 POST 桥 + 列表/筛选/回收站/删除确认；locale zh/en；SSR/装配测试 | 临时 profile 安装后：bundle 被分发、桥 401/200/领域错误实测、页面 SSR 渲染通过；浏览器内点击验证留待 M4 验收 |
+| M3 | 只读 agent 工具（list/detail）+ 批量操作 + 详情补全（轮数/token/血缘树） | 无 UI 场景可用；模型只能读 |
 | M4 | 发布验收：`npm pack` → 临时 profile link 安装 → registry 安装复验 | 见 `docs/publishing.md` 阶段 C/E |
 
 ## 6. 兼容与升级策略

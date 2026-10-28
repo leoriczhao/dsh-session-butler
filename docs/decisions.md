@@ -110,6 +110,18 @@
 - **决策（用户 2026-10-27 确认推荐项 A）**：trash 前若会话仍 live，先调用官方 `archiveSession({stopActivity:true})` 并等待运行工作结束（有界轮询）；成功后再执行 trash，最后清理归档/置顶状态。无 workspace 服务的组合（headless/ACP）直接返回 `session-running` 并提示先手动停止。不提供"强制停止并删除"。
 - **实现（M1）**：`SessionButlerService.settleRunning`；失败回滚时对本次归档过的会话 best-effort `unarchive`。
 
+### D-016 Web 管理面与 Host 的通信：同源前缀 POST 桥 · accepted
+
+- **背景**：第三方 npm 插件无法新增 Typert `@Remote` 命名空间（构建期 codegen + 静态 api-remotes 导入），`$mount`/`typert.register` 属不稳定内部面。
+- **决策**：Host 用 `webServer.register({kind:'prefix', path:'/session-butler/api'})` 暴露一个同源 POST 桥；Client 用 document-relative `fetch`。请求先过 `connection.requestRejection`（401/403），body 限 64 KiB，参数在 Host 重新校验；响应统一 `{ok,value|error}` 信封，领域错误固定 HTTP 200（页面展示稳定错误码），协议错误 400/404/405/413。
+- **实现（M2）**：`src/host/bridge.ts` + `src/client/bridge.ts`；方法 `status/detail/trash/restore/purge/list-trash`；临时 profile 实测未认证 401、成功 200、`session-not-found`/`permanent-delete-disabled`/`trash-not-found` 领域错误。
+
+### D-017 Host 服务的可选注入与延迟绑定 · accepted
+
+- **背景**：Web profile 中 `webServer`/`connection`/`workspaceRegistry` 可能在插件 `apply` 之后才挂载；headless/ACP 则永远没有它们。
+- **决策**：桥用 `ctx.inject(['webServer','connection'], ...)` 可选注入；`sessions`/`agents`/`workspaceRegistry` 通过 `() => ctx.get(...)` 在操作时延迟取值；命令面不依赖这些可选服务，headless 仍可 `/session-butler`。
+- **影响**：`workspaceAvailable` 变成运行时能力探测（M2 实测从 false 修正为 true）；删除运行中会话在无 workspace 组合继续按 D-013 拒绝。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |
@@ -124,10 +136,11 @@
 
 ## 发布门禁（MVP acceptance checklist）
 
-- [ ] `pnpm run verify` 全绿（typecheck + build + tests + package validation）
-- [ ] M1 删除核心在临时 `DSH_HOME` fixture 上通过：trash/restore/purge/级联/锁冲突/运行中拒绝
-- [ ] M2 管理页在临时 profile 通过：挂载、列表、筛选、trash/restore/purge、错误码展示、刷新
-- [ ] 临时 profile 用绝对路径 link 安装并 `--dump-config` 校验（`docs/publishing.md` 阶段 C）
+- [x] `pnpm run verify` 全绿（typecheck + build + 35 tests + package validation）
+- [x] M1 删除核心在 fixture 上通过：trash/restore/purge/级联/锁冲突/运行中拒绝（`tests/m1-delete.test.mjs`）
+- [x] M2 桥/页面：临时 profile 实测 bundle 分发、认证 401、status/list/detail 与领域错误；页面 SSR + 装配测试通过。
+      *未完成*：真实浏览器内点击/截图验证（留 M4 发布验收）。
+- [ ] 临时 profile 用绝对路径 link 安装并 `--dump-config` 校验（`docs/publishing.md` 阶段 C；M1/M2 已手工跑通，需固化为脚本）
 - [ ] `npm pack` 产物在干净目录安装后 `exports` 全部可解析（阶段 B）
 - [ ] locale（zh/en）、icon、detail 文档在插件页正确显示
 - [ ] running/archived/fork/subagent 四类边界测试通过

@@ -61,7 +61,7 @@ const footer = 'return module.exports; } });'
 
 await build({
   absWorkingDir: root,
-  entryPoints: [path.join(root, 'src/client/index.ts')],
+  entryPoints: [path.join(root, 'src/client/index.tsx')],
   outfile,
   bundle: true,
   format: 'cjs',

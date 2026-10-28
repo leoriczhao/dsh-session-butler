@@ -115,10 +115,33 @@ export interface CommandsPort {
   register(definition: ButlerCommandDefinition): () => void
 }
 
+/** One Host HTTP route (rc.2 `dsh-host-webserver` WebRoute, node:http handler). */
+export interface HostWebRoute {
+  readonly kind: 'exact' | 'prefix'
+  /** Absolute pathname, no trailing slash. */
+  readonly path: string
+  handler(request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse): void | Promise<void>
+}
+
+/** The `webServer` Host service subset Threadloom consumes. */
+export interface WebServerPort {
+  register(route: HostWebRoute): () => void
+}
+
+/**
+ * The `connection` Host service subset used to admit only authenticated
+ * same-origin browser requests (rc.2 `ConnectionTrustRequest` / 401|403|undefined).
+ */
+export interface ConnectionPort {
+  requestRejection(request: { headers: import('node:http').IncomingHttpHeaders }): 401 | 403 | undefined
+}
+
 /** Host context surface used by `apply` (Cordis `Context` subset). */
 export interface ButlerHostContext {
   get<T>(name: string): T | undefined
   provide(name: string, value: unknown): () => void
   effect(execute: () => unknown, label?: string): unknown
+  /** Optional-service injection: the callback runs when every named service exists. */
+  inject?(names: readonly string[], callback: (scope: ButlerHostContext) => unknown): unknown
   logger?: { warn(message: string): void }
 }

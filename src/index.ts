@@ -16,6 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 import { Config, type ThreadloomConfig } from './config.js'
+import { mountBridge } from './host/bridge.js'
 import { createButlerCommand } from './host/command.js'
 import type {
   AgentsPort,
@@ -61,9 +62,6 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     return
   }
 
-  const sessions = host.get<SessionsPort>('sessions')
-  const agents = host.get<AgentsPort>('agents')
-  const workspace = host.get<WorkspaceRegistryPort>('workspaceRegistry')
   const service = new SessionButlerService({
     sessionsRoot: homePath('sessions'),
     trashRoot: homePath('session-butler', 'trash'),
@@ -72,12 +70,23 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     retentionDays: config.trashRetentionDays,
     cascadeSubagents: config.cascadeSubagents,
     permanentDelete: config.permanentDelete,
-    ...(sessions === undefined ? {} : { sessions }),
-    ...(agents === undefined ? {} : { agents }),
-    ...(workspace === undefined ? {} : { workspace }),
+    // Getters keep late-mounted services visible without delaying this plugin's
+    // activation (the Web profile mounts some of them after the bundle rows).
+    sessions: () => host.get<SessionsPort>('sessions'),
+    agents: () => host.get<AgentsPort>('agents'),
+    workspace: () => host.get<WorkspaceRegistryPort>('workspaceRegistry'),
   })
 
   host.provide('sessionButler', service)
+
+  // The bridge needs webServer + connection, which headless / ACP compositions
+  // never provide. Inject them optionally so the command surface still mounts
+  // everywhere, and the HTTP bridge appears exactly when a Web app is present.
+  if (typeof host.inject === 'function') {
+    host.inject(['webServer', 'connection'], scope => mountBridge(scope, service))
+  } else {
+    mountBridge(host, service)
+  }
 
   const commands = host.get<CommandsPort>('commands')
   if (commands !== undefined) {

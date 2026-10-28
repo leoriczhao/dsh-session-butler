@@ -38,16 +38,23 @@ test('client bundle is a classic script registering the module factory', () => {
   assert.equal(typeof registration.factory, 'function')
 })
 
-test('client factory returns the plugin module without touching the module table', () => {
+test('client factory requires only the shared platform modules', async () => {
   const registration = loadRegistration(code)
+  const react = await import('react')
+  const jsxRuntime = await import('react/jsx-runtime')
+  const table = { 'react': react, 'react/jsx-runtime': jsxRuntime }
   const requested = []
   const pluginModule = registration.factory((specifier) => {
     requested.push(specifier)
-    throw new Error(`unexpected require(${JSON.stringify(specifier)}) in the foundation client half`)
+    const provided = table[specifier]
+    if (provided === undefined) throw new Error(`unexpected require(${JSON.stringify(specifier)}) in the client half`)
+    return provided
   })
-  assert.deepEqual(requested, [])
+  assert.deepEqual([...new Set(requested)].sort(), ['react', 'react/jsx-runtime'])
   assert.equal(typeof pluginModule.apply, 'function')
   assert.ok(Array.isArray(pluginModule.inject))
+  assert.ok(pluginModule.inject.includes('slots'))
+  assert.ok(pluginModule.inject.includes('locale'))
 })
 
 test('client bundle has no top-level ESM syntax or dynamic imports', () => {
