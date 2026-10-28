@@ -149,6 +149,23 @@
 - **决策**：`trashMany` / `restoreMany` 接收 1–50 个非空字符串 id（Host 侧去重）；每项独立执行，单项失败写入 `items[].error`，不影响其余项；`moved`/`failed` 为聚合结果。级联已提前移走的 id 在后续显式条目中返回 `ok:true, moved:[]` 的 no-op，而不是重复失败。
 - **实现（M3）**：桥 `trash-many`/`restore-many`；Web 页多选 + 批量确认；测试覆盖部分失败、重复/级联重叠、空数组、超 50、混合类型。
 
+### D-021 D3 定位：完整管理台以「库/详情/续聊/分叉/组织」为核心，删除/回收站降为「清理」模块 · proposed（待用户确认）
+
+- **背景**：用户要求 D3「要做就做完整」，并质疑「删除/回收站是否该作为下一版核心」。Codex 桌面 UI 实机显示：删除位于右键菜单最底部、无快捷键、无回收站；行内主生命周期动作是归档（可恢复，Ctrl+Shift+A）。
+- **决策**：D3 的核心能力 = Library（检索/分组/预览）+ Detail（血缘/成本/产物）+ Resume（打开/续聊）+ Fork（工具/面板）+ Organize（置顶/归档/标签/备注）；删除/回收站作为 **Cleanup** 模块（默认 `permanentDelete=disabled`），成功指标是「误删=0、可恢复=100%、live 误删=0」，而不是删除量。
+- **证据**：`research/2026-10-28-codex-desktop-ui-audit.md` §3/§9；`research/codex-session-management.md` §E；`docs/decisions.md` D-003/D-005/D-013。
+
+### D-022 插件管理集成：复用 DSH Plugins 页 + `settings.plugins.tab` + 运行期健康，不重做插件管理 · proposed（待用户确认）
+
+- **背景**：DSH 已有插件管理（Plugins 设置页、插件详情/启停/卸载、`plugin-inventory` 的 fiberPhase/diagnostic、`dsh plugin` 转发 pnpm、`ctx.remote.settings` 配置读写）；Threadloom 此前的详情页/图标/描述/README 已由该机制展示（`docs/evidence/plugin-detail.png`）。
+- **决策**：
+  - 安装/启停/卸载/版本/README 交给 DSH，插件不重做；
+  - 配置保持**单源**（profile patch / Config）：优先让 Config 字段 `.volatile()` 走 DSH 原生表单；否则设置 tab 只读展示 + 复制 patch 片段，不建第二配置源；
+  - 在 Plugins 设置页注册一个 `settings.plugins.tab`（独立 id、inject 等待声明、旧版本静默降级），承载健康/诊断/入口设置；
+  - 运行期健康由 `/session-butler/api/status` 自报（桥/存储/后端/计数），补 `plugin-inventory` 看不到的功能级状态；
+  - 破坏性动作仅人类 UI；agent 工具保持只读/创建/分叉。
+- **证据**：`packages/client/ui-settings-plugins`、`packages/client/ui-settings-plugin-inventory`、`packages/host/plugin-inventory/src/types.ts`、`packages/boot/settings-controller`/`packages/settings/settings`、`apps/cli/src/args.ts`（plugin 子命令）；`docs/d3-console-design.md` §8。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |
