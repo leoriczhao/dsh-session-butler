@@ -28,8 +28,8 @@ function makeContext({ immediateInjection = true } = {}) {
   const localeCleanups = []
   const slotRegistrations = []
   const slotCleanups = []
-  let injectionCleanup
-  let injectionCallback
+  const injectionCallbacks = new Map()
+  const injectionCleanups = new Map()
   let effectCleanup
   const observed = { opened: [], refreshes: 0 }
   const ctx = {
@@ -50,9 +50,9 @@ function makeContext({ immediateInjection = true } = {}) {
     },
     slots: {
       inject(name, callback) {
-        injectionCallback = callback
-        if (immediateInjection) injectionCleanup = callback()
-        return () => { injectionCleanup?.() }
+        injectionCallbacks.set(name, callback)
+        if (immediateInjection) injectionCleanups.set(name, callback())
+        return () => { injectionCleanups.get(name)?.() }
       },
       register(options, component) {
         slotRegistrations.push({ options, component })
@@ -75,12 +75,12 @@ function makeContext({ immediateInjection = true } = {}) {
     slotRegistrations,
     slotCleanups,
     observed,
-    getInjectionCallback: () => injectionCallback,
+    getInjectionCallback: name => injectionCallbacks.get(name),
     getEffectCleanup: () => effectCleanup,
   }
 }
 
-test('apply registers the main panel and its sidebar row in one injection', async () => {
+test('apply registers the main panel and the sidebar row through independent injections', async () => {
   const plugin = await loadPlugin()
   assert.ok(plugin.inject.includes('slots'))
   assert.ok(plugin.inject.includes('locale'))
@@ -109,16 +109,24 @@ test('apply registers the main panel and its sidebar row in one injection', asyn
   assert.equal(typeof row.component, 'function')
 })
 
-test('registrations happen only after the main slot is declared', async () => {
+test('each slot registers only after its own declaration', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext({ immediateInjection: false })
   plugin.apply(fake.ctx)
   assert.equal(fake.slotRegistrations.length, 0)
   assert.equal(fake.localeRegistrations.length, 2)
-  const cleanup = fake.getInjectionCallback()()
-  assert.equal(fake.slotRegistrations.length, 2)
-  assert.equal(typeof cleanup, 'function')
-  cleanup()
+
+  // The sidebar slot is independent from `main`: declaring only the panel must
+  // not attempt to register `sidebar.panellist` (the real boot bug).
+  const cleanupPanel = fake.getInjectionCallback('main')()
+  assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), ['main'])
+  assert.equal(typeof cleanupPanel, 'function')
+  assert.equal(fake.slotRegistrations.some(entry => entry.options.name === 'sidebar.panellist'), false)
+
+  const cleanupRow = fake.getInjectionCallback('sidebar.panellist')()
+  assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), ['main', 'sidebar.panellist'])
+  cleanupRow()
+  cleanupPanel()
   assert.deepEqual(fake.slotCleanups, ['sidebar.panellist', 'main'])
 })
 

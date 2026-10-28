@@ -48,16 +48,31 @@ tar -tzf dsh-session-butler-*.tgz | sort
 必须包含：`package.json`、`lib/index.js`、`lib/client.js`、`lib/types/index.d.ts`、`cordis.patch.yml`、`locale/en.json`、`locale/zh.json`、`icon.svg`、`README.md`、`CHANGELOG.md`、`docs/usage.md`、`LICENSE`。
 不得包含：`src/`、`tests/`、`scripts/`、`tsconfig*`、`.github/`、`node_modules/`。
 
-在**干净临时目录**验证安装形态下 exports 可解析：
+在**干净临时目录**验证安装形态下 exports 可解析。Host 入口直接 import
+`@deepseek-ai/schemastery`/`@deepseek-ai/cordis`，它们是 optional peer，不会被
+`npm install <tgz>` 自动带入；真实 DSH profile 从 `$DSH_HOME/profiles/node_modules`
+解析这两个包，干净目录验证时需显式安装同版本 peer：
 
 ```bash
 tmp=$(mktemp -d); cd "$tmp"
 npm init -y >/dev/null
-npm install /path/to/dsh-session-butler-<version>.tgz
+npm install /path/to/dsh-session-butler-<version>.tgz \
+  @deepseek-ai/cordis@4.0.5 @deepseek-ai/schemastery@3.18.5
 node -e "const p=require('dsh-session-butler/package.json'); console.log(p.name,p.version,p.engines.dsh)"
-node --input-type=module -e "await import('dsh-session-butler')"
-node -e "console.log(require('dsh-session-butler/client') ? 'client: ok' : 'client: missing')"
+node --input-type=module -e "await import('dsh-session-butler')"   # Host ESM: exports/apply/inject
+# client 是 classic script，不能直接 require：在浏览器沙箱里确认工厂注册。
+node --input-type=module -e "
+import fs from 'node:fs'; import vm from 'node:vm';
+const code = fs.readFileSync('node_modules/dsh-session-butler/lib/client.js', 'utf8');
+let registration; vm.runInNewContext(code, { window: { __ModuleLoader__: { load(v) { registration = v } } }, console });
+console.log(registration.id, typeof registration.factory);
+"   # 期望: dsh-session-butler function
 ```
+
+2026-10-28 实测：`npm pack` 生成的 `dsh-session-butler-0.1.0.tgz` 安装到空目录后，
+`package.json` 的 `name/version/engines.dsh` 与 exports 均可解析；Host 导入返回
+`apply/inject/Config/SessionButlerService` 等导出；client bundle 沙箱注册返回
+`dsh-session-butler function`。
 
 ## 阶段 C：本地 link 安装验证（发布前必做）
 
@@ -73,10 +88,52 @@ dsh --profile tl-dev --dump-config | grep -A3 'session-butler'
 - Host 无 `FAILED` fiber；插件行 title/description/icon 正确（中英文各看一次）；
 - 浏览器控制台无 `client bundle not found` / `missed the module table` / `loaded without registering`；
 - 插件详情页显示 `docs/usage.md`（`meta.detail`）；
-- MVP 功能冒烟：列表、筛选、详情、trash → restore → purge、运行中拒绝、子代理级联计数；
-- 卸载回归：`dsh plugin --profile tl-dev remove dsh-session-butler`，确认行消失、无残留；删除临时 profile。
+- MVP 功能冒烟：列表、筛选、详情、trash → restore（隔离 `DSH_HOME`，见下）、运行中拒绝、子代理级联计数；`purge` 需显式开启配置后再测；
+- 卸载回归：`dsh plugin --profile tl-dev remove dsh-session-butler`，确认行消失、无残留；删除临时 profile 与隔离 home。
 
 > 注意：同一个包不能同时以 link 和 registry 两种形态被两个 loader source 解析，否则 Client 组合报 `resolves from multiple active Loader sources`。测试前确认临时 profile 里没有旧安装。
+
+**写入类冒烟必须隔离 `DSH_HOME`。** profile 只隔离插件配置/依赖，真实会话仍存放在
+`$DSH_HOME/sessions`；在默认 home 里点击“移入回收站/恢复”会改到日常会话。发布前用
+一次性 home 跑完整闭环：
+
+```bash
+export DSH_HOME=/tmp/threadloom-e2e-home
+rm -rf "$DSH_HOME" && mkdir -p "$DSH_HOME"
+dsh --profile tl-iso --from-default-profile web --dump-config
+dsh plugin --profile tl-iso add /home/leoric/code/dsh-session-butler
+dsh --profile tl-iso --no-open --port 3109
+# 隔离 home 没有历史会话。为验证写路径，可把一条已完成的 session.v4.jsonl.zstd
+# 复制到 "$DSH_HOME/sessions/--<normalized-cwd>--/<encoded-id>/"，再重启服务；
+# 或在隔离 home 里新建一个测试会话。随后只在 3109 端口操作测试会话。
+```
+
+### 阶段 C 实测记录（2026-10-28）
+
+环境：DSH `0.2.1-rc.3-22ddee3`，隔离 `DSH_HOME=/tmp/tl-m4/home`，profile
+`tl-iso`，插件以绝对路径 link 安装，端口 3109，Playwright Chromium 无头。
+
+| 检查 | 结果 |
+|---|---|
+| host / client 激活 | 页面无 `dsh-session-butler: failed`，无 `client bundle not found` / 模块表错误 |
+| 列表/筛选/计数 | 1 个会话正确渲染；标题、workspace、更新时间、行内按钮正常 |
+| 详情弹窗 | ID/cwd/创建时间/preset/状态/轮数/步骤/消息/工具/token/日志大小全部渲染 |
+| 行删除确认 | 文案与保留期说明正确；取消不写入 |
+| 批量确认 | 选中 1 项后批量栏出现，确认框显示“将 1 个会话移入回收站？”；取消不写入 |
+| 隔离写入闭环 | 确认后：会话列表 `0`、回收站 `1`；恢复后：回收站 `0`、会话列表 `1` |
+| 永久删除 | 按钮按默认配置禁用并给出原因提示 |
+| 控制台 | 无 console error / pageerror |
+
+证据截图（隔离 home，单个测试会话）：
+
+![会话管理页](evidence/web-page.png)
+![移入回收站确认](evidence/web-trash-confirm.png)
+![回收站条目](evidence/web-trash.png)
+![恢复后](evidence/web-restored.png)
+
+首轮真实浏览器启动曾暴露 M2 客户端注册 bug（`slot "sidebar.panellist" is not
+declared`），修复见 `CHANGELOG.md` 的 “real-browser activation” 段；修复后上述检查
+全部通过。
 
 ## 阶段 D：发布
 

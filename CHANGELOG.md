@@ -45,6 +45,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an unknown id per item (`trash-not-found`) with HTTP 200 aggregate; plugin
   activation produced no tool/schema warnings.
 
+### Fixed — real-browser activation and page readability (2026-10-28)
+
+- Client activation bug found by the first real Web boot: the M2 client nested
+  the `sidebar.panellist` registration inside `ctx.slots.inject('main', …)`.
+  `main` is declared by the layout before the sidebar plugin declares
+  `sidebar.panellist`, so `slots.register` threw
+  `slot "sidebar.panellist" is not declared`; the loader showed
+  `dsh-session-butler: failed` and the page never appeared. The two slots are
+  now registered through independent `slots.inject` calls, with dictionaries
+  registered first and every registration in one effect whose disposers are
+  unwound in reverse on both failure and teardown (a failed activation can no
+  longer leak a locale namespace into a retry).
+- Readability and layout fixes from the browser pass: body/meta labels use
+  `--dsw-alias-label-secondary` / `-tertiary` instead of the dimmed token, the
+  session total moved from the filter row (where it clipped at 1440 px) into
+  the batch bar, and an empty lineage section is no longer rendered.
+- Browser acceptance (isolated `DSH_HOME`, one seeded completed session): no
+  console/page errors; list/filter/count render; detail dialog renders figures;
+  row trash confirmation and batch trash confirmation render; isolated write
+  path completes trash → `0` sessions / `1` trash entry → restore → `1` session,
+  with permanent deletion shown as disabled. Screenshots under
+  `docs/evidence/`.
+
 ### Added — M2 Web management page and bridge (2026-10-28)
 
 - Host: same-origin POST bridge at `/session-butler/api` (`status`, `detail`,

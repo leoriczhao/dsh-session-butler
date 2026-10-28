@@ -3,7 +3,7 @@
 > DeepSeek Harness 的会话管理插件 —— 把散落在各个 workspace 里的会话，织成一张可检索、可整理、可恢复的网。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**foundation + M1 + M2 + M3（删除核心 + `/session-butler` 命令 + Web 管理页/同源桥 + 只读 agent 工具 + 批量操作 + 详情补全均已实现；M4 发布验收待完成，暂不发布）**
+**状态**：**foundation + M1 + M2 + M3（删除核心 + `/session-butler` 命令 + Web 管理页/同源桥 + 只读 agent 工具 + 批量操作 + 详情补全均已实现；M4 本地发布验收已通过，因 npm 凭据与仓库元数据未补齐而暂不发布）**
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
@@ -25,7 +25,7 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | 批量操作 | ✅ M3（管理页多选 + 同源桥 `trash-many` / `restore-many`，逐项结果） |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ M0 已完成 |
 
-> 当前 `0.1.0` 的工作区已包含可发布的包骨架、M1 删除核心、M2 Web 管理页与 M3 工具/批量/详情；发布验收（M4）尚未完成，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 52 tests + npm pack 契约）。发布门禁见 [`docs/decisions.md`](docs/decisions.md)。
+> 当前 `0.1.0` 的工作区已包含可发布的包骨架、M1 删除核心、M2 Web 管理页与 M3 工具/批量/详情。M4 本地验收（真实浏览器、隔离 `DSH_HOME` 写入闭环、干净目录安装）已完成；剩余阻塞是 npm 登录与 `repository`/`homepage`/`bugs` 元数据，因此**暂不发布**。验证：`pnpm run verify`（typecheck + build + 52 tests + npm pack 契约）。发布门禁与证据见 [`docs/decisions.md`](docs/decisions.md) 和 [`docs/publishing.md`](docs/publishing.md)。
 
 ## 快速开始（开发）
 

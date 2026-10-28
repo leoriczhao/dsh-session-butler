@@ -114,25 +114,28 @@ export function SessionDetailView({ detail, t }: { readonly detail: SessionDetai
             )}
           </div>
         )}
-      <div className="sb-detail-grid">
-        <DetailRow label={t('detail.lineage')}>
-          {detail.lineage.complete ? '' : t('detail.parentMissing', { id: detail.lineage.missingParentId ?? '?' })}
-        </DetailRow>
-        {detail.lineage.ancestors.map(entry => (
-          <div key={`ancestor-${entry.id}`} className="sb-lineage">↑ <span className="sb-mono">{entry.id}</span>{entry.cwd === undefined ? '' : ` · ${tailPath(entry.cwd)}`}</div>
-        ))}
-        {descendants.length > 0 && (
-          <>
-            <DetailRow label={t('detail.descendants', { count: descendants.length })}>{''}</DetailRow>
-            {descendants.map(row => (
-              <div key={`descendant-${row.node.id}`} className="sb-lineage">
-                {'  '.repeat(row.depth)}↳ <span className="sb-mono">{row.node.id}</span>
-                {row.node.agentPreset === undefined ? '' : ` · ${row.node.agentPreset}`}
-              </div>
-            ))}
-          </>
-        )}
-      </div>
+      {(!detail.lineage.complete || detail.lineage.ancestors.length > 0 || descendants.length > 0) && (
+        <div className="sb-detail-grid">
+          {!detail.lineage.complete && (
+            <div className="sb-hint">{t('detail.parentMissing', { id: detail.lineage.missingParentId ?? '?' })}</div>
+          )}
+          {detail.lineage.ancestors.length > 0 && <div className="sb-detail-label">{t('detail.lineage')}</div>}
+          {detail.lineage.ancestors.map(entry => (
+            <div key={`ancestor-${entry.id}`} className="sb-lineage">↑ <span className="sb-mono">{entry.id}</span>{entry.cwd === undefined ? '' : ` · ${tailPath(entry.cwd)}`}</div>
+          ))}
+          {descendants.length > 0 && (
+            <>
+              <div className="sb-detail-label">{t('detail.descendants', { count: descendants.length })}</div>
+              {descendants.map(row => (
+                <div key={`descendant-${row.node.id}`} className="sb-lineage">
+                  {'  '.repeat(row.depth)}↳ <span className="sb-mono">{row.node.id}</span>
+                  {row.node.agentPreset === undefined ? '' : ` · ${row.node.agentPreset}`}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </>
   )
 }
@@ -153,53 +156,53 @@ const CSS = `
 .sb-page { height: 100%; display: flex; flex-direction: column; gap: 14px; padding: 22px clamp(20px, 4vw, 44px) 30px; overflow-y: auto; }
 .sb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .sb-title { margin: 0; font-size: 20px; font-weight: 600; line-height: 28px; }
-.sb-subtitle { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-subtitle { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary, #475467); }
 .sb-actions { display: flex; align-items: center; gap: 8px; }
 .sb-btn { appearance: none; border: 1px solid var(--dsw-alias-border-l2, #d0d5dd); background: transparent; color: inherit; border-radius: var(--dsw-radius-sm, 6px); padding: 6px 12px; font-size: 13px; line-height: 18px; cursor: pointer; }
 .sb-btn:hover { border-color: var(--dsw-alias-border-l4, #98a2b3); }
 .sb-btn:disabled { opacity: .5; cursor: not-allowed; }
 .sb-btn-danger { border-color: var(--dsw-alias-state-error-primary, #d92d20); color: var(--dsw-alias-state-error-primary, #d92d20); }
 .sb-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l2, #eaecf0); padding-bottom: 8px; }
-.sb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-dimmed, #667085); padding: 6px 10px; font-size: 13px; border-radius: var(--dsw-radius-sm, 6px); cursor: pointer; }
+.sb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-tertiary, #667085); padding: 6px 10px; font-size: 13px; border-radius: var(--dsw-radius-sm, 6px); cursor: pointer; }
 .sb-tab[data-active="true"] { color: inherit; background: var(--dsw-alias-bg-l2, rgba(127,127,127,.10)); font-weight: 600; }
 .sb-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .sb-input, .sb-select { height: 30px; border: 1px solid var(--dsw-alias-border-l2, #d0d5dd); border-radius: var(--dsw-radius-sm, 6px); background: transparent; color: inherit; padding: 0 10px; font-size: 13px; }
 .sb-input { min-width: 240px; flex: 1 1 240px; }
-.sb-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dsw-alias-label-dimmed, #667085); }
-.sb-count { margin-left: auto; font-size: 12px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dsw-alias-label-tertiary, #667085); }
+.sb-count { margin-left: auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #667085); }
 .sb-list { display: flex; flex-direction: column; border: 1px solid var(--dsw-alias-border-l2, #eaecf0); border-radius: var(--dsw-radius-lg, 10px); overflow: hidden; }
 .sb-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--dsw-alias-border-l1, #f2f4f7); }
 .sb-row:first-child { border-top: 0; }
 .sb-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .sb-row-title { font-size: 13px; font-weight: 600; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-row-meta { font-size: 12px; line-height: 16px; color: var(--dsw-alias-label-dimmed, #667085); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-row-meta { font-size: 12px; line-height: 16px; color: var(--dsw-alias-label-tertiary, #667085); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .sb-badges { display: flex; flex-wrap: wrap; gap: 4px; }
-.sb-badge { font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l2, #eaecf0); color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-badge { font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l2, #eaecf0); color: var(--dsw-alias-label-tertiary, #667085); }
 .sb-badge-warn { border-color: var(--dsw-alias-state-warning-primary, #b54708); color: var(--dsw-alias-state-warning-primary, #b54708); }
 .sb-badge-error { border-color: var(--dsw-alias-state-error-primary, #d92d20); color: var(--dsw-alias-state-error-primary, #d92d20); }
-.sb-empty { padding: 28px; text-align: center; font-size: 13px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-empty { padding: 28px; text-align: center; font-size: 13px; color: var(--dsw-alias-label-tertiary, #667085); }
 .sb-message { font-size: 12px; line-height: 18px; min-height: 18px; }
 .sb-message[data-kind="error"] { color: var(--dsw-alias-state-error-primary, #d92d20); }
-.sb-message[data-kind="info"] { color: var(--dsw-alias-label-dimmed, #667085); }
-.sb-footer { margin-top: auto; font-size: 12px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-message[data-kind="info"] { color: var(--dsw-alias-label-tertiary, #667085); }
+.sb-footer { margin-top: auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #667085); }
 .sb-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 23, 42, .38); display: flex; align-items: center; justify-content: center; padding: 24px; }
 .sb-dialog { width: min(440px, 100%); background: var(--dsw-alias-bg-l1, #ffffff); color: var(--dsw-alias-label-primary, #101828); border: 1px solid var(--dsw-alias-border-l2, #eaecf0); border-radius: var(--dsw-radius-lg, 10px); padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 18px 48px rgba(15, 23, 42, .18); }
 .sb-dialog-title { margin: 0; font-size: 15px; font-weight: 600; }
-.sb-dialog-body { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-dialog-body { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary, #475467); }
 .sb-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .sb-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.sb-hint { font-size: 12px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-hint { font-size: 12px; color: var(--dsw-alias-label-tertiary, #667085); }
 .sb-pick { flex-shrink: 0; }
 .sb-batchbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px dashed var(--dsw-alias-border-l2, #d0d5dd); border-radius: var(--dsw-radius-sm, 6px); font-size: 13px; }
 .sb-batchbar .sb-count { margin-left: 0; }
 .sb-dialog-wide { width: min(620px, 100%); max-height: min(78vh, 720px); overflow-y: auto; }
 .sb-detail-grid { display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 20px; }
 .sb-detail-row { display: flex; gap: 10px; }
-.sb-detail-label { flex-shrink: 0; min-width: 96px; color: var(--dsw-alias-label-dimmed, #667085); }
+.sb-detail-label { flex-shrink: 0; min-width: 96px; color: var(--dsw-alias-label-secondary, #475467); }
 .sb-detail-value { word-break: break-word; }
 .sb-mono { font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, monospace); font-size: 12px; }
-.sb-lineage { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-dimmed, #667085); white-space: pre-wrap; }
+.sb-lineage { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #667085); white-space: pre-wrap; }
 `
 
 /** One session row. */
@@ -629,9 +632,9 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
             </select>
             <label className="sb-toggle"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />{t('filter.showArchived')}</label>
             <label className="sb-toggle"><input type="checkbox" checked={showSubagent} onChange={event => setShowSubagent(event.target.checked)} />{t('filter.showSubagent')}</label>
-            <span className="sb-count">{t('count.sessions', { count: visibleSessions.length })}</span>
           </div>
           <div className="sb-batchbar">
+            <span className="sb-count">{t('count.sessions', { count: visibleSessions.length })}</span>
             <label className="sb-toggle">
               <input
                 type="checkbox"

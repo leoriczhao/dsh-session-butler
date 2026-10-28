@@ -160,11 +160,13 @@
 - [x] `pnpm run verify` 全绿（typecheck + build + 52 tests + package validation）
 - [x] M1 删除核心在 fixture 上通过：trash/restore/purge/级联/锁冲突/运行中拒绝（`tests/m1-delete.test.mjs`）
 - [x] M2 桥/页面：临时 profile 实测 bundle 分发、认证 401、status/list/detail 与领域错误；页面 SSR + 装配测试通过。
-      *未完成*：真实浏览器内点击/截图验证（留 M4 发布验收）。
+- [x] M4 真实浏览器验收（2026-10-28，临时 profile）：首轮发现 M2 客户端单 `main` 注入导致 `sidebar.panellist` 未声明时报错并使插件 failed，已改为两个独立注入；修复后无控制台/页面错误，列表/筛选/详情弹窗/行删除确认/批量确认均渲染正常。
 - [x] M3 只读工具 + 批量 + 详情补全：工具 schema 用真实 DSH 校验器验证；`m3-read-model`/`m3-tools`/bridge/client 用例覆盖列表分页、详情部分 enrichment、批量逐项结果、批量 UI 渲染。
 - [x] M3 临时 profile（`tl-m3`，已删除）实测：`list` 分页/`truncated`、真实大会话 `detail`（turns/steps/events/token/title/血缘）完整、`trash-many` 非法负载 400、`restore-many` 逐项 `trash-not-found`；启动无工具 schema 警告。
-- [ ] 临时 profile 用绝对路径 link 安装并 `--dump-config` 校验（`docs/publishing.md` 阶段 C；M1/M2 已手工跑通，需固化为脚本）
-- [ ] `npm pack` 产物在干净目录安装后 `exports` 全部可解析（阶段 B）
-- [ ] locale（zh/en）、icon、detail 文档在插件页正确显示
-- [ ] running/archived/fork/subagent 四类边界测试通过
-- [ ] CHANGELOG、版本号、`engines.dsh` 与 DSH 运行时一致
+- [x] 临时 profile 用绝对路径 link 安装并 `--dump-config` 校验：隔离 `DSH_HOME=/tmp/tl-m4/home` 的 `tl-iso` profile 实测（命令与结果固化在 `docs/publishing.md` 阶段 C）。
+- [x] `npm pack` 产物在干净目录安装后 `exports` 全部可解析：安装 optional peer（`@deepseek-ai/cordis@4.0.5`、`@deepseek-ai/schemastery@3.18.5`）后 Host 导入成功；client bundle 在 `window.__ModuleLoader__` 沙箱内注册成功。
+- [x] 隔离 `DSH_HOME` 内完整写入闭环：页面移入回收站（`0` sessions / `1` trash entry）→ 恢复（`0` trash / `1` session），永久删除按默认配置禁用；证据 `docs/evidence/web-*.png`。
+- [ ] locale（zh/en）、icon、detail 文档在插件页正确显示（页面 zh/en 已目测；插件详情页/图标未单独验收）
+- [x] running/archived/subagent 边界：M1 running 拒绝 + 归档不级联、M3 detail 子代理 lineage 已覆盖；`fork` 按 D-015 延期，不阻塞 0.1.0。
+- [x] CHANGELOG、版本号 `0.1.0`、`engines.dsh` 与本地 DSH `0.2.1-rc.3` 一致；`npm latest` 仍为 rc.2 且下限覆盖 rc.2。
+- [ ] 发布阻塞项：`npm whoami` 未登录；`package.json` 的 `author`/`repository`/`homepage`/`bugs` 仍为占位/省略，待用户提供 npm 账号与仓库 URL。
