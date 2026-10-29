@@ -330,11 +330,11 @@ interface ButlerStatus {
 >
 > - **入口**：侧栏没有「会话管理」按钮（导航只有 插件/自动化任务/更多）；会话行 "..." 菜单追加 **会话详情…** 与 **会话库…**（带分隔线、原生菜单样式），点击详情直接打开 Threadloom 面板并弹出该会话详情；
 > - **Library**：从行菜单与 Plugins 页「打开会话库」按钮均可打开（`ctx.layout.selectPanel`）；空会话/回收站/批量等既有能力正常；
-> - **工具面**：真实 Web 会话实测只有 `session_butler_list`/`detail` 可用，`new`/`fork` 因能力探测早于 `sessionController` 挂载而漏注册；已按 D-025 改为晚绑定（重启后可见）。重启复验 new/fork 均出现；实测 `session_butler_new` 创建的空白会话未归属 Workspace（落「未分组」、打开后无 composer），按 D-027 改为传 `workspaceId`，并在临时 3120 实例端到端通过：agent 调工具 → 新会话被「新会话」复用 → 发 hello 收到回复。**live 复验（17:28 重启后）**：new → `session-284e19d0…` 与 fork → `session-e3487de9…` 均归属 `dsh-session-butler.sessionIds`；侧栏「新会话」点按复用 blank（composer 可用），fork 行可直接打开并带完整历史续聊。
+> - **工具面**：真实 Web 会话实测只有 `session_butler_list`/`detail` 可用，`new`/`fork` 因能力探测早于 `sessionController` 挂载而漏注册；已按 D-025 改为晚绑定（重启后可见）。重启复验 new/fork 均出现；实测 `session_butler_new` 创建的空白会话未归属 Workspace（落「未分组」、打开后无 composer），按 D-027 改为传 `workspaceId`，并在临时 3120 实例端到端通过：agent 调工具 → 新会话被「新会话」复用 → 发 hello 收到回复。**live 复验（17:28 重启后）**：new → `session-284e19d0…` 与 fork → `session-e3487de9…` 均归属 `dsh-session-butler.sessionIds`；侧栏「新会话」点按复用 blank（composer 可用），fork 行可直接打开并带完整历史续聊。**端到端任务**：再用 new 创建 `session-7237195b…`，在空白会话里发「总结一下这个项目」，真实 Web agent 自主读仓库完成 1 轮（115 events），会话自动命名「总结项目概况」，可直接继续对话。
 > - **配置**：bundle 页标题旁出现**「配置」按钮**（`plugins.detail.actions`），点击弹出 **Threadloom 设置**对话框（5 字段），保存后写回 profile `cordis.patch.yml`；行配置页同样可用（同一份 `configForms` 表单）。bundle 页 **Healthy** 徽标 + 状态区块；`inlineMenuEnabled` 取消勾选后菜单项**实时消失**、恢复后重新出现；
 > - 全程无 console/page error。
 >
-> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-configure-entry.png`、`plugin-configure-dialog.png`、`plugin-row-config.png`、`plugin-health-bundle.png`、`tool-created-hello.png`、`live-tool-create-reuse.png`、`live-tool-fork-open.png`。
+> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-configure-entry.png`、`plugin-configure-dialog.png`、`plugin-row-config.png`、`plugin-health-bundle.png`、`tool-created-hello.png`、`live-tool-create-reuse.png`、`live-tool-fork-open.png`、`live-new-session-summary.png`。
 >
 > **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此 Host 代码改动仍需**重启 DSH 进程**。下一阶段 D3.1 Library（搜索/筛选/排序 + 概览）。
 
