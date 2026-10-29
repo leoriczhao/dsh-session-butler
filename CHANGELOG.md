@@ -48,12 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **根因**：Host `sessionController.create` 只有请求带 `workspaceId` 时才会 `workspace.attachSession()`；工具只传 cwd/preset，child 不属于任何 Workspace；DSH 又会隐藏非当前的空白会话。
 - **修复**：`session_butler_new` 优先解析调用方 Workspace（`workspaceRegistry.list()` 按 sessionIds，再按 cwd）并传 `workspaceId`；无 registry 的组合回退 `cwd`。`ButlerSessionCreation.resolveWorkspace`、`WorkspaceRegistryPort.list` 均为可选扩展，客户端无改动。
 - **真实浏览器验收**（临时 3120 实例，加载新 Host 代码）：agent 调用工具创建 `session-d00fe9e4…` → 「新会话」复用该 blank → 发 hello 收到回复；侧栏归属 `dsh-session-butler` 分组。证据：`docs/evidence/tool-created-hello.png`。
+- **live 复验（2026-10-29 17:28 重启后，PID 199786）**：`session_butler_new` → `session-284e19d0…`、`session_butler_fork` → `session-e3487de9…` 均写入 `workspace.json` 的 `dsh-session-butler.sessionIds`；侧栏「新会话」即该 blank（点按复用、composer 可用），fork 行可直接打开并带 17 轮历史续聊。证据：`docs/evidence/live-tool-create-reuse.png`、`live-tool-fork-open.png`。
 - **测试**：`tests/m3-tools.test.mjs` + `tests/m1-apply.test.mjs` 新增 workspaceId 用例；60 → 62 tests 全绿。
-- **注意**：需再重启一次 DSH 进程加载 Host 修复。
+- **注意**：已在 live 重启后复验，无需再次重启。
 
 ### Docs
 
-- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023（用户纠正入口形态）、D-024（配置入口可见性）、D-025（创建工具晚绑定）新增；`docs/usage.md` 重写入口与配置说明。
+- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023（用户纠正入口形态）、D-024（配置入口可见性）、D-025（创建工具晚绑定）、D-027（工具创建会话归属 Workspace）新增；`docs/usage.md` / `README` 更新入口、配置与工具说明。
 
 ## [0.1.2] - 2026-10-28
 

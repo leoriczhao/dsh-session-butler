@@ -211,8 +211,9 @@
   - `session_butler_new` 有 Workspace id 时发 `{workspaceId, agentPreset}`（Host 由 Workspace.path 推导 cwd 并 attach），无 registry 的组合回退 `{cwd, agentPreset}`；
   - `WorkspaceRegistryPort` 增补可选 `list()`，其余 archive/pin 语义不变；客户端无需改动。
 - **证据**：真实 Web（DSH 0.2.2-alpha.2，live profile）复现「未分组 + 选择一个工作区」；修复后在**临时 3120 实例**（加载新 Host 代码）实测：agent 调用工具创建 `session-d00fe9e4…` → 点侧栏「新会话」被该空白会话复用（selected id 相同）→ composer 可用 → 发 hello 收到回复，侧栏显示在 `dsh-session-butler` 分组（非未分组）。截图 `docs/evidence/tool-created-hello.png`。
+- **live 复验（2026-10-29 17:28 重启后，PID 199786）**：`session_butler_new` → `session-284e19d0…`，`session_butler_fork` → `session-e3487de9…`；两者都写入 `~/.dsh/storages/workspace.json` 的 `dsh-session-butler`（`6d923fab…`）`sessionIds`。侧栏 `新会话` 行即该 blank（`data-row-key=session:session-284e19d0…`，`aria-selected=true`），点「新会话」`dsh.sessions.current` 直接复用该 id、composer 可用；fork 行出现在同组侧栏，点击后 `dsh.sessions.current` 切到 fork、带完整 17 轮历史且 composer 可用。截图 `docs/evidence/live-tool-create-reuse.png`、`live-tool-fork-open.png`。
 - **测试**：`tests/m3-tools.test.mjs` 新增「resolveWorkspace 时传 workspaceId」；`tests/m1-apply.test.mjs` 新增 apply 接线用例；60 → 62 tests 全绿。
-- **影响**：Web 组合需**再重启一次 DSH 进程**加载 Host 修复；修复后工具创建的空白会话由「点新会话」复用即可开始对话，或直接由会话库打开（已归属 Workspace，composer 正常）。
+- **影响**：Web 组合需重启 DSH 进程加载 Host 修复（已重启并复验）；工具创建的空白会话由「点新会话」复用即可开始对话，fork 直接出现在侧栏并可续聊。
 
 ## 待确认问题（发布前必须收敛）
 
