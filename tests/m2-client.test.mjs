@@ -97,10 +97,11 @@ test('apply registers the main panel and Codex-style session menu items, not a s
   assert.ok(fake.localeRegistrations.every(entry => entry.namespace === 'session-butler'))
   assert.ok(fake.localeRegistrations.every(entry => typeof entry.dict.title === 'string'))
 
-  assert.equal(fake.slotRegistrations.length, 7)
+  assert.equal(fake.slotRegistrations.length, 8)
   const pluginSlots = fake.slotRegistrations.filter(entry => entry.options.name.startsWith('plugins.'))
   assert.deepEqual(pluginSlots.map(entry => entry.options.name).sort(), [
     'plugins.bundle.config',
+    'plugins.detail.actions',
     'plugins.detail.badge',
     'plugins.detail.section',
     'plugins.row.config',
@@ -158,6 +159,7 @@ test('effect disposal releases locale and slot registrations', async () => {
   cleanup()
   assert.deepEqual(fake.localeCleanups.sort(), ['session-butler:en', 'session-butler:zh'])
   assert.deepEqual(fake.slotCleanups, [
+    'plugins.detail.actions',
     'plugins.detail.section',
     'plugins.detail.badge',
     'plugins.bundle.config',

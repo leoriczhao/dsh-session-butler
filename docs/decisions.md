@@ -181,6 +181,17 @@
 - **证据**：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-row-config.png`；浏览器实测（隔离 `DSH_HOME` + Playwright）：侧栏无「会话管理」按钮、两项菜单出现、详情面板打开、Library 从菜单/插件页打开、`inlineMenuEnabled` 取消勾选后菜单项立即消失并恢复。
 - **影响**：D-009 的 `sidebar.panellist` 部分作废；`main` 面板、locale、桥、命令、工具均不变。
 
+### D-024 配置入口可见性：bundle 页标题旁「配置」按钮 + 对话框，row 页保留 · accepted（用户 2026-10-29 反馈）
+
+- **背景**：用户找不到配置页面。D3.0 的配置只在 `plugins.row.config` 的行配置页，入口是 bundle 页底部行列表里的「Threadloom 会话管理」按钮，不在首屏、也没有「配置」字样；bundle 页正文只有 README 与健康区块。用户连续两轮问「配置页面到底在哪」。
+- **决策**：
+  - 用 `plugins.detail.actions`（id `threadloom-configure`，order 100，label `配置`/`Settings`）在 **bundle 页标题旁**渲染按钮，点击打开 `role="dialog"` 的 **Threadloom 设置** 对话框，内嵌 5 个字段，改动即保存并在对话框内显示「已保存。」；
+  - 对话框与 `plugins.row.config` 行配置页**共用同一份** `ctx.get('configForms').get(rowId)` 表单，仍由 config-editor 单源写 profile patch；客户端 apply 时取一次 form 放到 `pluginConfigForm`，dispose 时清空；
+  - `plugins.bundle.config` 只保留健康/统计与「打开会话库」，**不再内联第二份表单**；
+  - 兼容未重启的旧 Host：读取时 `inlineMenuEnabled` 缺失则回退旧字段 `panelEntryEnabled`，保存时自动映射到旧路径，重启后自动改回新字段。
+- **证据**：`docs/evidence/plugin-configure-entry.png`（标题旁「配置」按钮）、`plugin-configure-dialog.png`（对话框 5 字段）；隔离 `DSH_HOME` + Playwright 实测：按钮可见、对话框打开、保存 `trashRetentionDays` 写回 `cordis.patch.yml`、无 console/page error。
+- **影响**：修正 D-022「配置只经 row 页」的入口设计；`plugins.row.config` 与原生 DSH 配置页不变。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |

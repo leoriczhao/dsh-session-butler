@@ -28,9 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **配置字段**：`panelEntryEnabled` → `inlineMenuEnabled`（默认 true）。
 - **真实浏览器验收**：侧栏无「会话管理」；菜单出现 `会话详情…`/`会话库…`；点击详情打开面板并弹出详情；从菜单与插件页均可打开 Library；`inlineMenuEnabled` 实时增删菜单项；无 console/page error。证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`。
 
+### Fixed — 配置入口不可见（D-024，2026-10-29）
+
+- **bundle 页标题旁新增「配置」按钮**（`plugins.detail.actions`，id `threadloom-configure`，order 100）：点击弹出 **Threadloom 设置** 对话框，5 个字段改完即保存并显示「已保存。」；不再需要先滚到 bundle 页底部找行入口。
+- **共用同一份表单**：客户端 apply 时从 `ctx.get('configForms').get(rowId)` 取一次表单，对话框与 `plugins.row.config` 行配置页渲染同一 form，仍单源写 profile patch；`plugins.bundle.config` 只保留健康/统计与「打开会话库」，不内联重复表单。
+- **旧 Host 兼容**：读取时 `inlineMenuEnabled` 缺失则回退旧字段 `panelEntryEnabled`，保存自动映射旧路径；重启后恢复新字段。
+- **真实浏览器验收**（隔离 `DSH_HOME` + Playwright）：bundle 页标题旁「配置」按钮可见；对话框 5 字段；保存 `trashRetentionDays` → 40 写回 `cordis.patch.yml`；关闭对话框；无 console/page error。证据：`docs/evidence/plugin-configure-entry.png`、`plugin-configure-dialog.png`。
+
 ### Docs
 
-- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023 新增（用户 2026-10-29 纠正）；`docs/usage.md` 重写入口说明与配置键。
+- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023（用户纠正入口形态）、D-024（配置入口可见性）新增；`docs/usage.md` 重写入口与配置说明。
 
 ## [0.1.2] - 2026-10-28
 

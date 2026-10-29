@@ -48,13 +48,18 @@ dsh plugin --profile <profile> remove dsh-session-butler
 - **回收站**：列出已删除会话（删除时间、原路径、是否过保留期、级联关系）；「恢复」直接移回原目录；「永久删除」需要配置 `permanentDelete: confirm` 并再次输入完整 session id。
 - 顶部「刷新」会同时刷新会话列表与回收站；所有失败都以稳定错误码显示（如 `session-locked`、`permanent-delete-disabled`）。
 
-## DSH Plugins 页面（D3.0）
+## 配置入口（D3.0 + D-024）
 
-插件的配置字段全部声明为 DSH 的 volatile 配置，因此可以在 **DSH Plugins 页面**直接编辑（保存写回 profile patch，无需改文件）：
+插件的配置字段全部声明为 DSH 的 volatile 配置，保存直接写回 profile patch（无需改文件）。有两个等价的入口，共用同一份表单：
 
-- 打开 DSH Plugins 页 → 选中 **Threadloom** bundle → 行 **session-butler** 的「配置」入口；
-- 页面包含：回收站保留天数、运行中等待上限、级联子代理、会话行菜单动作开关、永久删除级别；
-- bundle 页与插件详情页还会显示 **功能级健康**（版本、会话/回收站/运行中数量、存储可写性、后端能力、最近错误），数据来自插件自报的 `/session-butler/api/status`。
+- **推荐**：侧栏 **插件** → 打开 **Threadloom 会话管理** bundle 页 → 标题右侧 **「配置」** 按钮 → 弹出 **Threadloom 设置** 对话框（5 个字段，改完即保存）；
+- DSH 原生路径：同一 bundle 页底部的行 **session-butler** → 打开行配置页（同样 5 个字段，共用同一份配置）。
+
+> 旧版本文档里的「侧栏入口开关」已删除；现在对应字段是「会话行菜单动作」（`inlineMenuEnabled`）。
+
+字段包含：回收站保留天数、运行中等待上限、级联子代理、会话行菜单动作开关、永久删除级别。
+
+bundle 页与插件详情页还会显示 **功能级健康**（版本、会话/回收站/运行中数量、存储可写性、后端能力、最近错误），数据来自插件自报的 `/session-butler/api/status`。
 
 > 需要 DSH 0.2.2+ 的组合才会出现这些入口；旧版本上 Settings 表单与插件页区块会静默跳过，主管理页/命令/工具不受影响。
 

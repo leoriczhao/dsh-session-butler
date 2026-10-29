@@ -87,6 +87,8 @@ export interface BridgeStatus {
 /** Configuration values the Client half reads from DSH settings. */
 export interface ClientConfigLike {
   readonly inlineMenuEnabled?: boolean
+  /** Pre-D3.0b field served by older Host schemas; read but never written by new code. */
+  readonly panelEntryEnabled?: boolean
   readonly trashRetentionDays?: number
   readonly cascadeSubagents?: boolean
   readonly permanentDelete?: 'disabled' | 'confirm'

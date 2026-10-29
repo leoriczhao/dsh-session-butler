@@ -51,6 +51,8 @@ dsh plugin --profile tl-web add /home/leoric/code/dsh-session-butler
 dsh --profile tl-web --port 3099 --no-open                      # 打开打印的 token URL；hover 会话行 → "..." → 「会话库…」
 ```
 
+配置：侧栏 **插件** → **Threadloom 会话管理** → 标题右侧 **「配置」** 按钮（对话框）或底部行 `session-butler` 的原生配置页，两者共用同一份表单。
+
 ## 目录
 
 ```

@@ -26,9 +26,12 @@ import { SessionButlerIcon, SessionButlerPage, SessionDetailView } from './page.
 import {
   ROW_CONFIG_KEY,
   ThreadloomBundleConfig,
+  ThreadloomConfigureAction,
   ThreadloomDetailBadge,
   ThreadloomDetailSection,
   ThreadloomRowConfig,
+  inlineMenuEnabledFromConfig,
+  setPluginConfigForm,
 } from './plugin-page.js'
 
 /**
@@ -95,6 +98,9 @@ function applyInner(ctx: ClientContextLike): void {
       // without that slot simply never mount these entries.
       const configForms = ctx.get?.('configForms') as ConfigFormsLike | undefined
       const clientConfig = configForms?.get<ClientConfigLike>(PLUGIN_ROW_ID)
+      // Share the one settings form with the Plugins bundle page, so the fields
+      // are visible where users expect the configuration.
+      setPluginConfigForm(clientConfig)
       let menuDisposers: Array<() => void> = []
       const disposeMenus = (): void => {
         for (const dispose of menuDisposers.reverse()) {
@@ -120,7 +126,7 @@ function applyInner(ctx: ClientContextLike): void {
         )))
       }
       const syncMenus = (): void => {
-        const enabled = clientConfig?.getSnapshot().value?.inlineMenuEnabled !== false
+        const enabled = inlineMenuEnabledFromConfig(clientConfig?.getSnapshot().value)
         if (enabled) registerMenus()
         else disposeMenus()
       }
@@ -129,6 +135,7 @@ function applyInner(ctx: ClientContextLike): void {
       disposers.push(() => {
         unsubscribeConfig?.()
         disposeMenus()
+        setPluginConfigForm(undefined)
         clearThreadloomNavigation()
       })
 
@@ -159,6 +166,12 @@ function applyInner(ctx: ClientContextLike): void {
           name: 'plugins.detail.section',
           options: { name: 'plugins.detail.section', id: 'threadloom-diagnostics', locale: NS },
           component: ThreadloomDetailSection as unknown as (props: never) => unknown,
+        },
+        {
+          name: 'plugins.detail.actions',
+          options: { name: 'plugins.detail.actions', id: 'threadloom-configure', order: 100, locale: NS },
+          component: ((props: { readonly subject?: unknown }) =>
+            ThreadloomConfigureAction({ subject: props.subject, t })) as unknown as (props: never) => unknown,
         },
       ]
       for (const slot of pluginsPageSlots) {

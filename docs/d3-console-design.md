@@ -242,16 +242,18 @@ Threadloom（main 面板，keyed）
 | 状态/统计 | `plugins.bundle.config`（keyed） | `dsh-session-butler` | bundle 页内联区块；**只有 `view:'page'`，无 form** |
 | 健康徽标 | `plugins.detail.badge`（list） | `id: threadloom-health` | bundle 页标题旁绿/黄/红 |
 | 诊断区 | `plugins.detail.section`（list） | `id: threadloom-diagnostics` | 桥/存储/最近错误，可复制复现命令 |
+| 显式配置入口 | `plugins.detail.actions`（list） | `id: threadloom-configure` | bundle 页标题旁「配置」按钮；点击弹出与 row 页同一份 `configForms` 表单的对话框 |
 
 - 不使用 `settings.plugins.tab`（语义错位）；也不建议 `plugins.tab`（会把会话库塞进插件页、与主面板重复）。
 - 可选兜底：若未来需要一个**独立设置导航页**，用 `settings.section`（`id: threadloom`），不要与 row 页同时放同一组设置。
 - 所有注册都走 `ctx.slots.inject(...)`：宿主未声明 slot 时只等待、不抛错，天然完成版本特性探测。
 
-### 8.3 配置：`volatile` + row 页表单，单源写 profile patch
+### 8.3 配置：`volatile` + 共用一份表单，单源写 profile patch
 
 - 现有 3 个 Config 字段（`trashRetentionDays` / `cascadeSubagents` / `permanentDelete`，`src/config.ts`）**必须补 `.volatile()`** 才会进入 DSH 的表单投影；P0 新增 `liveSettleTimeoutMs`（live 停止等待）与 `inlineMenuEnabled`（控制会话行 "..." 菜单贡献，默认 true）。
 - 表单来源：Plugins 页 row 页从 `ui-settings` 的 `ctx.configForms` 生成 `form: {state, mutate}`；我们只负责**渲染字段**（DSH 没有自动表单页面——`autoGenerate` 无客户端消费，`configure({auto:false})` 只翻标志）。注意 owner 传入的是 `{state, mutate}` 结构，不是 `ConfigForm` 实例（没有 `getSnapshot`）；`mutate(ops, revision)` 成功后由 owner 的 mirror 刷新 `state`。
 - 保存：`form.mutate([{path, value}], state.revision)` → config-editor 写 profile `cordis.patch.yml` → Loader 热应用。**不新建 HTTP 写接口、不建第二配置源**。
+- **入口统一（2026-10-29）**：客户端在 apply 时用 `ctx.get('configForms').get(rowId)` 取同一份服务表单，`plugins.detail.actions` 的「配置」按钮打开对话框渲染它；`plugins.row.config` 仍渲染 DSH 原生配置页。两处共用同一 form，不存在两份状态；bundle 页正文不再内联重复表单。
 - 降级：无 `ui-settings`（headless/旧组合）时 row 页无表单；`plugins.row.config` 组件显示只读配置 + 指向 profile patch 的说明，不报红。
 
 ### 8.4 运行期健康（补 inventory 看不到的功能级状态）
@@ -316,7 +318,7 @@ interface ButlerStatus {
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| D3.0 | 设计定稿 + 插件页集成（row config / bundle config / detail badge+section）+ Config volatile；status 健康快照；`liveSettleTimeoutMs`/`inlineMenuEnabled` 接线 | 插件页出现「配置」入口；保存写回 profile patch 且热生效；健康红黄绿正确；无回归 |
+| D3.0 | 设计定稿 + 插件页集成（row config / detail.actions 配置按钮+对话框 / bundle config / detail badge+section）+ Config volatile；status 健康快照；`liveSettleTimeoutMs`/`inlineMenuEnabled` 接线 | 插件页出现「配置」入口（标题旁按钮与 row 页）；保存写回 profile patch 且热生效；健康红黄绿正确；无回归 |
 | D3.0b（2026-10-29） | Codex 式入口修订：删除 `sidebar.panellist`；会话行 "..." 菜单注入详情/会话库；`ctx.layout.selectPanel` 打开 main 面板；`inlineMenuEnabled` 热增删菜单项 | 侧栏无「会话管理」按钮；两项菜单出现且可打开详情/Library；取消勾选后菜单项立即消失 |
 | D3.1 | Library（搜索/筛选/排序/分页/批量 pin+archive）+ Detail 抽屉 + 概览 | 1k 会话首屏 <300ms；批量操作逐项结果可见 |
 | D3.2 | 分叉入口（human）+ fork 边界（P1）+ Trash 完整（保留期/批量恢复/强确认）+ live 引导 | 误删=0；恢复=100%；live 阻断有文案 |
@@ -327,10 +329,10 @@ interface ButlerStatus {
 >
 > - **入口**：侧栏没有「会话管理」按钮（导航只有 插件/自动化任务/更多）；会话行 "..." 菜单追加 **会话详情…** 与 **会话库…**（带分隔线、原生菜单样式），点击详情直接打开 Threadloom 面板并弹出该会话详情；
 > - **Library**：从行菜单与 Plugins 页「打开会话库」按钮均可打开（`ctx.layout.selectPanel`）；空会话/回收站/批量等既有能力正常；
-> - **配置**：bundle 页 **Healthy** 徽标 + 状态区块；行配置表单 5 字段（含「会话行菜单动作」）；保存 `trashRetentionDays 45 → 60` 写回 profile `cordis.patch.yml` 且 `/status` 无需重启即返回 60；`inlineMenuEnabled` 取消勾选后菜单项**实时消失**、恢复后重新出现；
+> - **配置**：bundle 页标题旁出现**「配置」按钮**（`plugins.detail.actions`），点击弹出 **Threadloom 设置**对话框（5 字段），保存后写回 profile `cordis.patch.yml`；行配置页同样可用（同一份 `configForms` 表单）。bundle 页 **Healthy** 徽标 + 状态区块；`inlineMenuEnabled` 取消勾选后菜单项**实时消失**、恢复后重新出现；
 > - 全程无 console/page error。
 >
-> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-row-config.png`、`plugin-health-bundle.png`。
+> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-configure-entry.png`、`plugin-configure-dialog.png`、`plugin-row-config.png`、`plugin-health-bundle.png`。
 >
 > **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此 Host 代码改动仍需**重启 DSH 进程**。下一阶段 D3.1 Library（搜索/筛选/排序 + 概览）。
 
@@ -342,7 +344,7 @@ interface ButlerStatus {
 2. **插件页 slot 稳定性**：`plugins.*` 是 0.2.2 的契约，不在 `engines.dsh` 语义内；全部用 `ctx.slots.inject` 探测（rc.2 组合无入口但主面板/命令/工具可用）。DSH 升级后需重跑审计 + 浏览器实测。
 3. **`remote.pluginInventory` 权限**：owner 页面恒放行，非 owner/liveshare 可能拒绝；只做可选增强，失败降级到自有 `status`。
 4. ~~**没有"打开主面板"API**~~（2026-10-29 已核实）：第三方 Client 插件可 `inject: ['layout']` 并调用 `ctx.layout.selectPanel('session-butler')`；已用于行菜单与 Plugins 页「打开会话库」。
-5. **bundle.config 无 form**：配置只放 row 页，bundle 页只做状态/统计，避免两处编辑入口。
+5. ~~**bundle.config 无 form**~~（2026-10-29 已解决）：bundle 页标题旁用 `plugins.detail.actions` 提供**「配置」按钮 + 对话框**，与 row 页共用同一份 `configForms` 表单；bundle 页正文仍只做健康/统计（`plugins.bundle.config` 无 form），避免页面内联重复表单。
 6. **升级体验**：当前 `link:` 安装无 `updatable`；发布 npm 后需验证 remove+install 对运行中 client 半侧/主面板的影响与失败回滚文案。
 7. **写操作重复**：官方已有 pin/archive；批量操作走官方 remote 还是 Host 服务需实测失败语义与刷新。
 8. **live/性能/搜索/隐私/兼容**：trash 的 stopActivity+settle 成功率；1k+ 会话 stat 成本；`session-query` 默认关闭需降级；回收站/导出隐私；fork 血缘 REL≠HEAD（v2 §5.3）。

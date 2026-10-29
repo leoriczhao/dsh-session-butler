@@ -20,11 +20,41 @@ import type { ReactElement } from 'react'
 
 import { PLUGIN_ID, PLUGIN_ROW_ID } from '../shared/identity.js'
 import { callBridge } from './bridge.js'
-import type { BridgeStatus, ClientConfigLike, ConfigPageFormLike } from './contract.js'
+import type {
+  BridgeStatus,
+  ClientConfigLike,
+  ConfigFormLike,
+  ConfigFormSnapshotLike,
+  ConfigPageFormLike,
+  ConfigPathOpLike,
+} from './contract.js'
 import { canOpenThreadloom, requestThreadloom } from './navigation.js'
 
 /** Key the plugin manager addresses a row's configuration page by. */
 export const ROW_CONFIG_KEY = `${PLUGIN_ID}#${PLUGIN_ROW_ID}`
+
+/**
+ * The DSH settings form for the plugin row, captured at apply time.
+ *
+ * The Plugins bundle page renders the same fields in its status block so the
+ * settings are visible where users look for them ("where is the config page?");
+ * both surfaces write through this one form, so the profile patch stays the
+ * single source of truth.
+ */
+let pluginConfigForm: ConfigFormLike<ClientConfigLike> | undefined
+
+/** Install (or clear) the form the bundle-page settings block renders. */
+export function setPluginConfigForm(form: ConfigFormLike<ClientConfigLike> | undefined): void {
+  pluginConfigForm = form
+}
+
+/**
+ * Read the inline-menu switch with the pre-D3.0b field as a fallback, so a
+ * refreshed Client still works against a Host that has not restarted yet.
+ */
+export function inlineMenuEnabledFromConfig(value: ClientConfigLike | undefined): boolean {
+  return value?.inlineMenuEnabled ?? value?.panelEntryEnabled ?? true
+}
 
 /** Locale translator shape injected by the slot renderer. */
 type Translate = (key: string, vars?: Record<string, string | number>) => string
@@ -190,40 +220,54 @@ function FieldRow({ label, children }: { readonly label: string; readonly childr
   )
 }
 
-/**
- * The row configuration page contributed to `plugins.row.config`.
- *
- * DSH supplies `form` only when the plugin's volatile Config fields are served
- * through the settings domain; without it this renders an actionable fallback
- * instead of failing the page.
- */
-export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
-  const { view = 'page', form, t } = props
-  const currentValue = form?.state.value as ClientConfigLike | undefined
+/** Read the service-owned config form snapshot for a component. */
+function useConfigFormSnapshot(
+  form: ConfigFormLike<ClientConfigLike> | undefined,
+): ConfigFormSnapshotLike<ClientConfigLike> | undefined {
+  const [snapshot, setSnapshot] = useState<ConfigFormSnapshotLike<ClientConfigLike> | undefined>(() => form?.getSnapshot())
+  useEffect(() => {
+    if (form === undefined) {
+      setSnapshot(undefined)
+      return
+    }
+    setSnapshot(form.getSnapshot())
+    return form.subscribe(() => { setSnapshot(form.getSnapshot()) })
+  }, [form])
+  return snapshot
+}
+
+/** The five editable fields, bound to one DSH config form snapshot. */
+function SettingsBody({ snapshot, mutate, t }: {
+  readonly snapshot: ConfigFormSnapshotLike<unknown>
+  readonly mutate: (ops: readonly ConfigPathOpLike[], revision?: number) => Promise<boolean>
+  readonly t: Translate
+}): ReactElement {
+  const currentValue = snapshot.value as ClientConfigLike | undefined
   const [values, setValues] = useState<ClientConfigLike>(() => currentValue ?? {})
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   useEffect(() => { setValues(currentValue ?? {}) }, [currentValue])
-  if (view === 'summary') return <p className="sb-plugin-note">{t('plugin.config.summary')}</p>
-  if (form === undefined) return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('plugin.config.unavailable')}</p></div>
-  const snapshot = form.state
-  if (snapshot.status === 'loading') return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('loading')}</p></div>
-  if (snapshot.status === 'unavailable') return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('plugin.config.unavailable')}</p></div>
+  if (snapshot.status === 'loading') return <p className="sb-plugin-note">{t('loading')}</p>
+  if (snapshot.status === 'unavailable') return <p className="sb-plugin-note">{t('plugin.config.unavailable')}</p>
   const disabled = !snapshot.writable || state === 'saving'
-  const save = async (field: keyof ClientConfigLike, value: unknown): Promise<void> => {
+  const save = async (field: string, value: unknown): Promise<void> => {
     setValues(previous => ({ ...previous, [field]: value }))
     setState('saving')
+    // Older Host schemas still call the inline-menu switch `panelEntryEnabled`.
+    const legacyField = field === 'inlineMenuEnabled'
+      && currentValue?.inlineMenuEnabled === undefined
+      && currentValue?.panelEntryEnabled !== undefined
     try {
-      const accepted = await form.mutate([{ op: 'set', path: [field], value }], snapshot.revision)
+      const accepted = await mutate(
+        [{ op: 'set', path: [legacyField ? 'panelEntryEnabled' : field], value }],
+        snapshot.revision,
+      )
       setState(accepted ? 'saved' : 'failed')
     } catch {
       setState('failed')
     }
   }
   return (
-    <div className="sb-plugin-block">
-      <div className="sb-plugin-head">
-        <span className="sb-plugin-title">{t('plugin.config.title')}</span>
-      </div>
+    <>
       {!snapshot.writable ? <p className="sb-plugin-note">{t('plugin.config.readonly')}</p> : null}
       <FieldRow label={t('plugin.config.retention')}>
         <input
@@ -249,7 +293,7 @@ export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
       <FieldRow label={t('plugin.config.inlineMenu')}>
         <input
           className="sb-plugin-check" type="checkbox" disabled={disabled}
-          checked={values.inlineMenuEnabled ?? true}
+          checked={inlineMenuEnabledFromConfig(values)}
           onChange={event => { void save('inlineMenuEnabled', event.target.checked) }}
         />
       </FieldRow>
@@ -265,6 +309,27 @@ export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
       </FieldRow>
       {state === 'saved' ? <p className="sb-plugin-note" data-kind="success">{t('plugin.config.saved')}</p> : null}
       {state === 'failed' ? <p className="sb-plugin-note" data-kind="error">{t('plugin.config.saveFailed')}</p> : null}
+    </>
+  )
+}
+
+/** The row configuration page contributed to `plugins.row.config`. */
+export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
+  const { view = 'page', form, t } = props
+  if (view === 'summary') return <p className="sb-plugin-note">{t('plugin.config.summary')}</p>
+  if (form === undefined) {
+    return <div className="sb-plugin-block"><p className="sb-plugin-note">{t('plugin.config.unavailable')}</p></div>
+  }
+  return (
+    <div className="sb-plugin-block">
+      <div className="sb-plugin-head">
+        <span className="sb-plugin-title">{t('plugin.config.title')}</span>
+      </div>
+      <SettingsBody
+        snapshot={form.state}
+        mutate={(ops, revision) => form.mutate(ops, revision)}
+        t={t}
+      />
     </div>
   )
 }
@@ -280,6 +345,51 @@ export function ThreadloomBundleConfig({ t }: { readonly t: Translate }): ReactE
           <button type="button" className="sb-plugin-btn" onClick={() => { requestThreadloom('library') }}>
             {t('plugin.library.open')}
           </button>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+/** Top-of-bundle "Configure" action: opens the same settings form in a dialog. */
+export function ThreadloomConfigureAction({ subject, t }: {
+  readonly subject?: unknown
+  readonly t: Translate
+}): ReactElement | null {
+  const [open, setOpen] = useState(false)
+  const configForm = pluginConfigForm
+  const configSnapshot = useConfigFormSnapshot(configForm)
+  if (!isThreadloomSubject(subject as PluginsSubjectLike | undefined)) return null
+  return (
+    <>
+      <button type="button" className="sb-plugin-btn" onClick={() => { setOpen(true) }}>
+        {t('plugin.config.open')}
+      </button>
+      {open ? (
+        <div className="sb-config-overlay" onClick={() => { setOpen(false) }}>
+          <div
+            className="sb-config-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('plugin.config.title')}
+            onClick={event => { event.stopPropagation() }}
+          >
+            <div className="sb-plugin-head">
+              <span className="sb-plugin-title">{t('plugin.config.title')}</span>
+              <button type="button" className="sb-plugin-btn" onClick={() => { setOpen(false) }}>
+                {t('plugin.config.close')}
+              </button>
+            </div>
+            {configForm === undefined || configSnapshot === undefined
+              ? <p className="sb-plugin-note">{t('plugin.config.unavailable')}</p>
+              : (
+                <SettingsBody
+                  snapshot={configSnapshot}
+                  mutate={(ops, revision) => configForm.mutate(ops, revision)}
+                  t={t}
+                />
+              )}
+          </div>
         </div>
       ) : null}
     </>
@@ -332,6 +442,9 @@ const PLUGIN_CSS = `
 .sb-plugin-status[data-level="unavailable"] { color: var(--dsw-alias-state-error, #e03131); border-color: currentColor; }
 .sb-plugin-btn { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.35)); background: transparent; color: inherit; cursor: pointer; }
 .sb-plugin-btn:disabled { opacity: .5; cursor: default; }
+.sb-config-overlay { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .35); }
+.sb-config-dialog { width: min(560px, 100%); max-height: calc(100vh - 48px); overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 12px; background: var(--dsw-alias-bg-layer1, #fff); color: var(--dsw-alias-label-primary, inherit); box-shadow: 0 12px 32px rgba(0, 0, 0, .18); }
+.sb-config-dialog .sb-plugin-head { display: flex; align-items: center; justify-content: space-between; }
 .sb-plugin-note { margin: 0; color: var(--dsw-alias-label-secondary, rgba(127,127,127,.95)); }
 .sb-plugin-note[data-kind="error"] { color: var(--dsw-alias-state-error, #e03131); }
 .sb-plugin-note[data-kind="success"] { color: var(--dsw-alias-state-success, #2f9e44); }
