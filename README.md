@@ -27,9 +27,24 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | Agent 工具：读取 | ✅ M3（`session_butler_list` / `session_butler_detail`） |
 | **Agent 工具：会话 → 新会话** | ✅ 0.1.2（`session_butler_new` 继承调用方 cwd/preset 新建空会话；`session_butler_fork` 从调用方会话按已完成轮分叉；只操作调用方会话，不暴露任意 session id；删除等破坏性写操作不进工具面） |
 | 批量操作 | ✅ M3（管理页多选 + 同源桥 `trash-many` / `restore-many`，逐项结果） |
-| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ M0 已完成 |
+| DSH 插件页集成 | ✅ D3.0/D-024（bundle 页标题旁「配置」按钮 + 设置对话框；健康徽标、诊断区块；5 个 volatile 配置热生效） |
+| Codex 式入口 | ✅ D3.0b/D-023（无侧栏按钮；会话行 "..." 菜单内联「会话详情…」「会话库…」；`inlineMenuEnabled` 可关） |
+| i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
+| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2` + D3 改动待 `npm publish`（需 2FA） |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）与 `0.1.2`（工具面补齐）已构建待 `npm publish`（需要账号 2FA）。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 59 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）以及 D3.0/3.0b 改动已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有 10 个提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 59 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+
+## 还差什么（D3 路线图）
+
+D3 目标是「完整管理台」，当前完成 D3.0 + D3.0b；以下是已设计、未实现的部分（详见 [`docs/d3-console-design.md`](./docs/d3-console-design.md) §10）：
+
+| 阶段 | 缺口 |
+|---|---|
+| 发布 | `0.1.1`/`0.1.2` + D3 改动尚未 `npm publish`（2FA）；10 个本地提交未 push |
+| D3.1 Library | 排序控件（当前固定 pin + 最近活动）、分页（当前本地最多 300 行）、概览统计页、详情抽屉（当前是弹窗）、Library 内「新建会话」、批量置顶/归档（当前批量仅删除/恢复） |
+| D3.2 组织与生命周期 | 面板内分叉入口（当前用官方 UI 或 agent tool）、分叉边界选择、Trash 保留期清理引导/审计、live 会话引导文案打磨 |
+| D3.3 增强 | 标签/备注（P1）、内容级搜索（opt-in `session-query`）、导出 Markdown、Cleanup 清理页、独立诊断页、命令面板/快捷键、hover 预览、过滤保存 |
+| 明确非目标 | 跨 workspace 移动（D-012）、自动永久删除、运行中会话强删（D-013） |
 
 ## 快速开始（开发）
 
