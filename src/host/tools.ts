@@ -438,16 +438,16 @@ function toDetailWire(detail: SessionDetail): {
  * Build the `session_butler_new` definition.
  *
  * The tool deliberately has no cwd/workspace/session-id parameter: it creates
- * an empty Session beside the caller, using the caller's own header cwd and
- * preset. That keeps the new write surface to "spawn a sibling conversation"
- * rather than "create anything anywhere".
+ * an empty Session beside the caller, using the caller's own header cwd,
+ * Workspace, and preset. That keeps the new write surface to "spawn a sibling
+ * conversation" rather than "create anything anywhere".
  */
 export function createNewSessionTool(create: ButlerSessionCreation): ButlerToolDefinition {
   return {
     name: 'session_butler_new',
     description:
       'Create a new empty DSH session in the caller\'s current working directory and inherit its agent preset. '
-      + 'The new session is independent (no copied messages), appears in the Web sidebar and Threadloom list, '
+      + 'The new session joins the caller\'s Workspace, appears in the Web sidebar and Threadloom list, '
       + 'and can be opened/continued by the user. Returns the new session id. This tool only creates a session; '
       + 'it never accepts arbitrary paths or session ids and performs no deletion.',
     parameters: compileParameterSchema({}),
@@ -469,14 +469,24 @@ export function createNewSessionTool(create: ButlerSessionCreation): ButlerToolD
       },
     },
     async execute(_args, exec: ButlerToolRunContext) {
-      const header = exec.agent?.session?.header
+      const caller = exec.agent?.session
+      const header = caller?.header
       const cwd = header?.cwd
       if (typeof cwd !== 'string' || cwd.length === 0) {
         throw new Error('session_butler_new needs the caller session working directory; start the call from an agent session')
       }
+      const callerSessionId = caller?.id ?? header?.id
+      // Prefer Workspace attachment: a cwd-only Session lands in the Web
+      // sidebar's ungrouped bucket and cannot be continued until the user
+      // re-binds it (D-027). Resolve the caller's Workspace when the
+      // composition exposes the registry; otherwise fall back to plain cwd.
+      const workspaceId = create.resolveWorkspace?.({
+        ...(typeof callerSessionId === 'string' ? { sessionId: callerSessionId } : {}),
+        cwd,
+      })
       const agentPreset = header?.agentPreset
       const result = await create.create({
-        cwd,
+        ...(workspaceId === undefined ? { cwd } : { workspaceId }),
         ...(agentPreset === undefined ? {} : { agentPreset }),
       })
       return {
@@ -581,7 +591,7 @@ function disposeAll(disposers: readonly (() => void)[]): () => void {
  *
  * Kept separate from the creation tools so a Host composition can bind them at
  * different times: `tools` exists long before the Web profile mounts
- * `sessionController` (D-026).
+ * `sessionController` (D-025).
  */
 export function registerReadTools(tools: ToolsPort, read: ButlerReadModel): () => void {
   return disposeAll([createListTool(read), createDetailTool(read)].map(definition => tools.register(definition)))

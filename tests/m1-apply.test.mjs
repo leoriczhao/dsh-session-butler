@@ -109,6 +109,41 @@ test('apply binds the creation tools when sessionController mounts after tools',
   }
 })
 
+test('apply wires the caller Workspace into session_butler_new', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'butler-apply-workspace-'))
+  try {
+    const fake = fakeHost({ home, headers: {} })
+    const created = []
+    fake.extras.set('workspaceRegistry', {
+      async archiveSession() {},
+      async unarchiveSession() {},
+      async pinSession() {},
+      async unpinSession() {},
+      list() {
+        return [{ id: 'ws-proj', path: '/work/proj', sessionIds: ['session-caller'] }]
+      },
+    })
+    fake.extras.set('sessionController', {
+      async create(request) {
+        created.push(request)
+        return { sessionId: 'session-new' }
+      },
+    })
+
+    apply(fake.ctx, { trashRetentionDays: 30, cascadeSubagents: true, permanentDelete: 'disabled' })
+
+    const newTool = fake.tools.find(tool => tool.name === 'session_butler_new')
+    assert.ok(newTool, 'session_butler_new is registered while sessionController is present')
+    const value = await newTool.execute({}, {
+      agent: { session: { id: 'session-caller', header: { id: 'session-caller', cwd: '/work/proj' } } },
+    })
+    assert.deepEqual(created, [{ workspaceId: 'ws-proj' }])
+    assert.deepEqual(value, { sessionId: 'session-new', cwd: '/work/proj' })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('apply exposes the trash service and registers /session-butler', async () => {
   const home = await mkdtemp(path.join(tmpdir(), 'butler-apply-'))
   try {

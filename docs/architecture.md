@@ -47,7 +47,7 @@ DSH 的工具面（`ctx.tools` → 模型可见工具）里**没有**「从会�
 **Threadloom 的工具边界（M3 已收敛）**：
 
 - 0.1.0 已实现：只读 `session_butler_list`（含过滤/分页）、`session_butler_detail`；
-- 0.1.2 已实现（D-015 收口）：`session_butler_fork`（对**调用方自己**的会话分叉，默认最近完成轮、可选精确 `atSeq`；直接调用 Host `sessionController.fork`，语义同 Web Remote `session.fork`）、`session_butler_new`（按调用方会话 header 的 cwd/preset 新建空会话）；两者都只操作调用方会话，不接受任意 session id 或路径；
+- 0.1.2 已实现（D-015 收口）：`session_butler_fork`（对**调用方自己**的会话分叉，默认最近完成轮、可选精确 `atSeq`；直接调用 Host `sessionController.fork`，语义同 Web Remote `session.fork`）、`session_butler_new`（按调用方会话 header 的 cwd/preset 新建空会话，并按 D-027 优先传调用方 Workspace 的 `workspaceId`，使新会话归属同一 workspace）；两者都只操作调用方会话，不接受任意 session id 或路径；
 - 删除类写操作**不**作为工具暴露（D-003），只走管理页/命令面。
 
 ### 1.3 关键约束
@@ -177,7 +177,7 @@ purge(id):   trash 记录存在 → rm -rf trash/<id> → 删除记录（permane
   - 注册方式必须**结构化**：第三方已发布插件不能 import `@deepseek-ai/dsh-tools`，因此 `host/tools.ts` 手写 `{name, description, parameters, output:{schema, render}, execute}` 交给 `ctx.tools.register`；`parameters` 不是 `defineTool` 的逐属性 DSL，而是**编译后的对象根 JSON Schema**（`host/schema.ts` 把 `required:true` 属性表编译成 `{type:'object', properties, required?}`），`output.schema` 同样用 DSH 支持的 JSON Schema 子集（均已用真实 `assertSupportedJsonSchema` 校验）。裸属性表会被 native function calling 原样发给 provider 并报 `type: null`（0.1.1 修复）。
   - `list` 参数：`query?`/`cwd?`/`includeArchived?`/`includeSubagents?`/`limit?`；输出 `{total,truncated,sessions[]}`，render 为逐行文本（id、标题、cwd、相对时间、flags）。
   - `detail` 参数：`sessionId`（必填，精确 id）；输出 header、stats、tokens、size/eventCount、enrichment、扁平化后代（`depth`）；render 对有界后代做截断说明。
-  - `new` 参数：无；cwd/agentPreset 取自 `exec.agent.session.header`，调用 `sessionController.create` 返回新会话 id。
+  - `new` 参数：无；cwd/agentPreset 取自 `exec.agent.session.header`；Workspace 经可选 `workspaceRegistry.list()` 解析（先按调用方 sessionIds、再按 cwd），传 `workspaceId` 让 Host 把新会话 attach 到同一 workspace（D-027；无 registry 时回退 cwd），返回新会话 id。
   - `fork` 参数：`atSeq?`（非负安全整数）；源会话固定为 `exec.agent.session.id`，调用 `sessionController.fork` 返回 `{sessionId, sourceSessionId, atSeq?}`。
   - 工具在 `ctx.inject(['tools'], scope => …)` 里注册（headless 也可能没有 tools）；服务对象本身暴露只读方法，桥与工具共享同一实现。
 

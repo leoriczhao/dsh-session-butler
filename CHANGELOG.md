@@ -42,6 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **测试**：`tests/m1-apply.test.mjs` 新增晚绑定用例（控制器延迟出现后注册 new/fork）；59 → 60 tests 全绿。
 - **注意**：修复需要重启 DSH 进程才会出现在现有 Web 会话中。
 
+### Fixed — 工具创建的会话未归属 Workspace（D-027，2026-10-29）
+
+- **现象**：重启加载 D-025 后 `session_butler_new` / `session_butler_fork` 已可见；调用 `session_butler_new` 返回 id，但新会话落在侧栏「未分组」，从会话库打开后只显示「选择一个工作区开始」，没有 composer，无法续聊。
+- **根因**：Host `sessionController.create` 只有请求带 `workspaceId` 时才会 `workspace.attachSession()`；工具只传 cwd/preset，child 不属于任何 Workspace；DSH 又会隐藏非当前的空白会话。
+- **修复**：`session_butler_new` 优先解析调用方 Workspace（`workspaceRegistry.list()` 按 sessionIds，再按 cwd）并传 `workspaceId`；无 registry 的组合回退 `cwd`。`ButlerSessionCreation.resolveWorkspace`、`WorkspaceRegistryPort.list` 均为可选扩展，客户端无改动。
+- **真实浏览器验收**（临时 3120 实例，加载新 Host 代码）：agent 调用工具创建 `session-d00fe9e4…` → 「新会话」复用该 blank → 发 hello 收到回复；侧栏归属 `dsh-session-butler` 分组。证据：`docs/evidence/tool-created-hello.png`。
+- **测试**：`tests/m3-tools.test.mjs` + `tests/m1-apply.test.mjs` 新增 workspaceId 用例；60 → 62 tests 全绿。
+- **注意**：需再重启一次 DSH 进程加载 Host 修复。
+
 ### Docs
 
 - `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023（用户纠正入口形态）、D-024（配置入口可见性）、D-025（创建工具晚绑定）新增；`docs/usage.md` 重写入口与配置说明。

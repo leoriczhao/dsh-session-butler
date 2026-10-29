@@ -148,6 +148,19 @@ export interface WorkspaceRegistryPort {
   /** Logical archive set; absent on compositions whose registry predates the getter. */
   readonly archivedSessionIds?: readonly string[]
   readonly pinnedSessionIds?: readonly string[]
+  /**
+   * Durable Workspace rows; used to place a tool-created Session into the
+   * caller's Workspace instead of leaving it ungrouped. Optional so older
+   * compositions keep working.
+   */
+  list?(): readonly WorkspaceDescriptorLike[]
+}
+
+/** The Workspace fields Threadloom reads when resolving a caller's Workspace. */
+export interface WorkspaceDescriptorLike {
+  readonly id?: string
+  readonly path?: string
+  readonly sessionIds?: readonly string[]
 }
 
 /** One `/session-butler` command result (rc.2 `CommandResult`). */
@@ -237,7 +250,9 @@ export interface ButlerToolDefinition {
 
 /** Request subset of the Host `sessionController.create` Remote (new conversation). */
 export interface ButlerSessionCreateRequest {
-  readonly cwd: string
+  /** Caller's Workspace id when resolvable; exactly one of workspaceId/cwd is sent. */
+  readonly workspaceId?: string
+  readonly cwd?: string
   readonly agentPreset?: string
 }
 
@@ -249,11 +264,18 @@ export interface ButlerSessionCreateResult {
 
 /**
  * Creation-only dependency used by `session_butler_new`. The tool never accepts
- * an arbitrary path or workspace id: it reuses the calling Session's own cwd and
- * preset, so the new Session cannot escape the caller's workspace.
+ * an arbitrary path or workspace id: it reuses the calling Session's own cwd,
+ * Workspace, and preset, so the new Session cannot escape the caller's scope.
  */
 export interface ButlerSessionCreation {
   create(request: ButlerSessionCreateRequest): Promise<ButlerSessionCreateResult>
+  /**
+   * Optional Workspace lookup for the child Session. When present, `new`
+   * attaches the child to the caller's Workspace (falling back to a Workspace
+   * at the same cwd) so it appears under that Workspace in the Web sidebar
+   * instead of the ungrouped bucket.
+   */
+  resolveWorkspace?(request: { readonly sessionId?: string; readonly cwd: string }): string | undefined
 }
 
 /** Request subset of the Host `sessionController.fork` Remote (one prefix → a new Session). */

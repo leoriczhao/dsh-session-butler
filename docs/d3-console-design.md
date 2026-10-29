@@ -320,20 +320,21 @@ interface ButlerStatus {
 |---|---|---|
 | D3.0 | 设计定稿 + 插件页集成（row config / detail.actions 配置按钮+对话框 / bundle config / detail badge+section）+ Config volatile；status 健康快照；`liveSettleTimeoutMs`/`inlineMenuEnabled` 接线 | 插件页出现「配置」入口（标题旁按钮与 row 页）；保存写回 profile patch 且热生效；健康红黄绿正确；无回归 |
 | D3.0b（2026-10-29） | Codex 式入口修订：删除 `sidebar.panellist`；会话行 "..." 菜单注入详情/会话库；`ctx.layout.selectPanel` 打开 main 面板；`inlineMenuEnabled` 热增删菜单项 | 侧栏无「会话管理」按钮；两项菜单出现且可打开详情/Library；取消勾选后菜单项立即消失 |
+| D3.0c（2026-10-29） | 工具面 Workspace 归属修复（D-027）：`session_butler_new` 解析调用方 Workspace 并传 `workspaceId`，不再落「未分组」 | 工具创建的空白会话归属 workspace；「新会话」可复用并正常发消息 |
 | D3.1 | Library（搜索/筛选/排序/分页/批量 pin+archive）+ Detail 抽屉 + 概览 | 1k 会话首屏 <300ms；批量操作逐项结果可见 |
 | D3.2 | 分叉入口（human）+ fork 边界（P1）+ Trash 完整（保留期/批量恢复/强确认）+ live 引导 | 误删=0；恢复=100%；live 阻断有文案 |
 | D3.3 | 标签/备注、内容搜索 opt-in、导出 MD、Cleanup、诊断、i18n/主题、审计 | 标签筛选可组合；导出内容正确；诊断可复制 |
 | 发布 | npm `0.2.0` + GitHub release + 市场元数据 | 安装/升级/回滚演练通过 |
 
-> **实现状态（2026-10-29 已验证）**：D3.0 + D3.0b 已落地并通过 `pnpm run verify`（60 tests / 57 package checks）。在隔离 `DSH_HOME`（DSH 0.2.2-alpha.2，含真实会话数据）+ Playwright Chromium 实测：
+> **实现状态（2026-10-29 已验证）**：D3.0 + D3.0b + D3.0c 已落地并通过 `pnpm run verify`（62 tests / 57 package checks）。在隔离 `DSH_HOME`（DSH 0.2.2-alpha.2，含真实会话数据）+ Playwright Chromium 实测：
 >
 > - **入口**：侧栏没有「会话管理」按钮（导航只有 插件/自动化任务/更多）；会话行 "..." 菜单追加 **会话详情…** 与 **会话库…**（带分隔线、原生菜单样式），点击详情直接打开 Threadloom 面板并弹出该会话详情；
 > - **Library**：从行菜单与 Plugins 页「打开会话库」按钮均可打开（`ctx.layout.selectPanel`）；空会话/回收站/批量等既有能力正常；
-> - **工具面**：真实 Web 会话实测只有 `session_butler_list`/`detail` 可用，`new`/`fork` 因能力探测早于 `sessionController` 挂载而漏注册；已按 D-025 改为晚绑定（重启后可见）。
+> - **工具面**：真实 Web 会话实测只有 `session_butler_list`/`detail` 可用，`new`/`fork` 因能力探测早于 `sessionController` 挂载而漏注册；已按 D-025 改为晚绑定（重启后可见）。重启复验 new/fork 均出现；实测 `session_butler_new` 创建的空白会话未归属 Workspace（落「未分组」、打开后无 composer），按 D-027 改为传 `workspaceId`，并在临时 3120 实例端到端通过：agent 调工具 → 新会话被「新会话」复用 → 发 hello 收到回复。
 > - **配置**：bundle 页标题旁出现**「配置」按钮**（`plugins.detail.actions`），点击弹出 **Threadloom 设置**对话框（5 字段），保存后写回 profile `cordis.patch.yml`；行配置页同样可用（同一份 `configForms` 表单）。bundle 页 **Healthy** 徽标 + 状态区块；`inlineMenuEnabled` 取消勾选后菜单项**实时消失**、恢复后重新出现；
 > - 全程无 console/page error。
 >
-> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-configure-entry.png`、`plugin-configure-dialog.png`、`plugin-row-config.png`、`plugin-health-bundle.png`。
+> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-configure-entry.png`、`plugin-configure-dialog.png`、`plugin-row-config.png`、`plugin-health-bundle.png`、`tool-created-hello.png`。
 >
 > **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此 Host 代码改动仍需**重启 DSH 进程**。下一阶段 D3.1 Library（搜索/筛选/排序 + 概览）。
 

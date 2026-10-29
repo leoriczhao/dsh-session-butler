@@ -66,6 +66,29 @@ export const name = PLUGIN_ID
 export const inject = ['sessionQuery', 'sessionPersistence', 'sessions', 'agents'] as const
 
 /**
+ * Resolve the Workspace that owns a Session, falling back to a Workspace at the
+ * same cwd. Host `sessionController.create` only attaches a child to a
+ * Workspace when it receives `workspaceId`; a cwd-only child is left ungrouped
+ * and cannot be continued from the Web sidebar until re-bound (D-027).
+ *
+ * The registry is looked up lazily on every call so a late-mounted Workspace
+ * service is still observed after the tools were registered.
+ */
+function workspaceFor(
+  host: ButlerHostContext,
+  request: { readonly sessionId?: string; readonly cwd: string },
+): string | undefined {
+  const workspaces = host.get<WorkspaceRegistryPort>('workspaceRegistry')?.list?.()
+  if (workspaces === undefined) return undefined
+  const sessionId = request.sessionId
+  const owner = sessionId === undefined
+    ? undefined
+    : workspaces.find(workspace => workspace.sessionIds?.includes(sessionId) === true)
+  if (owner?.id !== undefined) return owner.id
+  return workspaces.find(workspace => workspace.path === request.cwd && workspace.id !== undefined)?.id
+}
+
+/**
  * Resolve the optional `sessionController` Remote owner into tool capabilities.
  *
  * The Web profile mounts it; headless/ACP compositions may not. Both methods are
@@ -75,7 +98,14 @@ function sessionToolCapabilities(host: ButlerHostContext): ButlerToolCapabilitie
   const controller = host.get<ButlerSessionCreation & ButlerSessionForking>('sessionController')
   if (controller === undefined) return {}
   return {
-    ...(typeof controller.create === 'function' ? { create: controller } : {}),
+    ...(typeof controller.create === 'function'
+      ? {
+          create: {
+            create: (request: Parameters<ButlerSessionCreation['create']>[0]) => controller.create(request),
+            resolveWorkspace: (request: { readonly sessionId?: string; readonly cwd: string }) => workspaceFor(host, request),
+          },
+        }
+      : {}),
     ...(typeof controller.fork === 'function' ? { fork: controller } : {}),
   }
 }
@@ -130,7 +160,7 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
       scope.effect(() => registerReadTools(tools, service), 'session-butler: read tools')
     })
     // The Web profile mounts `sessionController` after the bundle rows, so a
-    // one-shot capability probe at tools-mount time misses it (D-026). Bind the
+    // one-shot capability probe at tools-mount time misses it (D-025). Bind the
     // creation tools when both services are actually present.
     host.inject(['tools', 'sessionController'], (scope) => {
       const tools = scope.get<ToolsPort>('tools')

@@ -202,6 +202,18 @@
 - **证据**：本会话运行时探测（`typeof tools.session_butler_new === 'undefined'`，list/detail 可用）；新增 `tests/m1-apply.test.mjs` 晚绑定用例（延迟控制器出现后注册 new/fork）；测试 59 → 60 全绿。
 - **影响**：修复后 Web 会话需要**重启 DSH 进程**才能看到 new/fork；工具语义、错误码与权限边界不变。
 
+### D-027 工具创建的会话必须归属调用方 Workspace · fixed（2026-10-29 实测发现）
+
+- **背景**：D-025 修复后重启 DSH，`session_butler_new` / `session_butler_fork` 在真实 Web 会话中可见。实测调用 `session_butler_new` 成功返回 id，但新会话在侧栏落到 **「未分组」**；从 Threadloom 会话库「打开」后主面板显示「选择一个工作区开始」，没有可输入的 composer，无法续聊。
+- **根因**：Host `sessionController.create` 只有在请求带 `workspaceId` 时才调用 `workspace.attachSession(child)`；工具当时只传 `{cwd, agentPreset}`（照抄调用方 header），创建出的 Session 有 cwd 但不属于任何 Workspace。DSH 的空白会话又只在「当前 blank / 被 Workspace 复用时」显示，因此它既不可见也不可用。
+- **决策**：
+  - 新增可选能力 `ButlerSessionCreation.resolveWorkspace({sessionId, cwd})`：Host 侧从 `workspaceRegistry.list()` 先按调用方 sessionIds 命中、再按 cwd 命中，返回 Workspace id；
+  - `session_butler_new` 有 Workspace id 时发 `{workspaceId, agentPreset}`（Host 由 Workspace.path 推导 cwd 并 attach），无 registry 的组合回退 `{cwd, agentPreset}`；
+  - `WorkspaceRegistryPort` 增补可选 `list()`，其余 archive/pin 语义不变；客户端无需改动。
+- **证据**：真实 Web（DSH 0.2.2-alpha.2，live profile）复现「未分组 + 选择一个工作区」；修复后在**临时 3120 实例**（加载新 Host 代码）实测：agent 调用工具创建 `session-d00fe9e4…` → 点侧栏「新会话」被该空白会话复用（selected id 相同）→ composer 可用 → 发 hello 收到回复，侧栏显示在 `dsh-session-butler` 分组（非未分组）。截图 `docs/evidence/tool-created-hello.png`。
+- **测试**：`tests/m3-tools.test.mjs` 新增「resolveWorkspace 时传 workspaceId」；`tests/m1-apply.test.mjs` 新增 apply 接线用例；60 → 62 tests 全绿。
+- **影响**：Web 组合需**再重启一次 DSH 进程**加载 Host 修复；修复后工具创建的空白会话由「点新会话」复用即可开始对话，或直接由会话库打开（已归属 Workspace，composer 正常）。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |

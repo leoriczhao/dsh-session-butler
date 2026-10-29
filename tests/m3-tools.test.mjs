@@ -236,6 +236,40 @@ test('registerButlerTools adds session_butler_new only when a session creator is
   )
 })
 
+test('session_butler_new attaches the caller Workspace when the capability resolves one', async () => {
+  const registered = []
+  const tools = {
+    register(definition) {
+      registered.push(definition)
+      return () => {}
+    },
+  }
+  const created = []
+  registerButlerTools(tools, makeReadModel(), {
+    create: {
+      async create(request) {
+        created.push(request)
+        return { sessionId: 'session-new', agentPreset: request.agentPreset }
+      },
+      resolveWorkspace({ sessionId, cwd }) {
+        assert.equal(sessionId, 'session-caller')
+        assert.equal(cwd, '/work/proj')
+        return 'ws-proj'
+      },
+    },
+  })
+  const newTool = registered.find(tool => tool.name === 'session_butler_new')
+  const value = await newTool.execute({}, {
+    agent: { session: { id: 'session-caller', header: { id: 'session-caller', cwd: '/work/proj', agentPreset: 'build' } } },
+  })
+  assert.deepEqual(created, [{ workspaceId: 'ws-proj', agentPreset: 'build' }])
+  assert.deepEqual(value, {
+    sessionId: 'session-new',
+    cwd: '/work/proj',
+    agentPreset: 'build',
+  })
+})
+
 test('registerButlerTools adds session_butler_fork only when a session forker is available', async () => {
   const registered = []
   const tools = {

@@ -11,7 +11,7 @@
 - **整理**：改名、置顶、归档（复用 DSH 已有能力，管理面集中操作）；
 - **删除**：回收站优先——先移入回收站，可恢复；确认后才永久删除，并可选级联删除子代理会话；
 - **批量**：会话与回收站列表均支持多选，批量移入回收站 / 批量恢复逐项返回结果；
-- **Agent 工具**：`session_butler_list` / `session_butler_detail` 让模型在无 UI 场景读取会话列表与详情；`session_butler_new` / `session_butler_fork` 补齐 DSH 工具面的「会话 → 新会话」（新建同 cwd/preset 的空会话、或从当前会话按已完成轮分叉）。删除等破坏性写操作仍只留给命令/管理页。
+- **Agent 工具**：`session_butler_list` / `session_butler_detail` 让模型在无 UI 场景读取会话列表与详情；`session_butler_new` / `session_butler_fork` 补齐 DSH 工具面的「会话 → 新会话」（新建同 cwd/preset、且归属调用方 workspace 的空会话，或从当前会话按已完成轮分叉）。删除等破坏性写操作仍只留给命令/管理页。
 
 > **版本状态（0.1.2，已构建待发布）**：M1–M4 已完成——Host 删除核心、`/session-butler` 命令、Web 管理页（列表/筛选/批量/详情/回收站/删除确认）、agent 工具均可用。0.1.1 修复工具 `parameters` 根 schema（native function calling 不再整请求失败）；0.1.2 补齐 `session_butler_new` / `session_butler_fork`，闭合 D-015 的工具面缺口。真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 全新安装均已验证。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
 
@@ -71,11 +71,11 @@ bundle 页与插件详情页还会显示 **功能级健康**（版本、会话/�
 |---|---|---|
 | `session_butler_list` | `query?`、`cwd?`、`includeArchived?`、`includeSubagents?`、`limit?`（1–100，默认 25） | `total` / `truncated` / 会话行（id、标题、cwd、时间、归档/置顶/子代理/live/迁移/flags） |
 | `session_butler_detail` | `sessionId`（必填，精确 id） | header、统计（轮数/步骤/消息/工具/token/日志字节）、enrichment 状态、祖先与扁平化子代理后代（`depth`） |
-| `session_butler_new` | 无 | 在**调用方会话自己的 cwd/preset** 下新建空会话，返回 `sessionId`（不接受任意路径/workspace/目标会话 id） |
+| `session_butler_new` | 无 | 在**调用方会话自己的 cwd/preset** 下新建空会话，并自动归属调用方 Workspace，返回 `sessionId`（不接受任意路径/workspace/目标会话 id；空白会话可点侧栏「新会话」复用后开始对话） |
 | `session_butler_fork` | `atSeq?`（精确包含的源事件 seq；省略=最近一个已完成轮） | 把**调用方会话**分叉成新的独立会话，返回 `sessionId`/`sourceSessionId`/`atSeq`；同一路径与 Web Remote `session.fork` 语义一致 |
 
 - `list`/`detail` 只读，不能移动、删除或修改任何会话；错误以 `session-not-found` 等稳定信息返回给模型。
-- `new`/`fork` 只创建新的平级会话，不复制或删除旧会话；它们只在组合提供 `sessionController` 时出现（Web profile 有，headless/ACP 可能没有），且永远只操作调用方自己的会话。
+- `new`/`fork` 只创建新的平级会话，不复制或删除旧会话；它们只在组合提供 `sessionController` 时出现（Web profile 有，headless/ACP 可能没有），且永远只操作调用方自己的会话。`new` 在 Web 组合会把新会话 attach 到调用方 Workspace（D-027），否则空白会话会落进「未分组」且无法直接续聊。
 - 工具输出同时带 JSON 值（供脚本化使用）与经过裁剪的文本渲染（供人读）；详情后代过多时文本会注明截断。
 
 ## 命令（M1）
