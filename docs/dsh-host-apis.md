@@ -568,7 +568,7 @@ cascade: descendants = 交叉验证（subagents.listDescendants ∩ traceSession
 ### 6.3 与现有 GUI 的关系
 
 - 侧栏已有：workspace 分组、标题搜索、pin、rename、archive/unarchive、fork、`/export`、archived 筛选。Threadloom 的差异化在「统一管理面 + 删除/回收站 + 详情/血缘 + 批量操作 + 跨 workspace 总览」，而不是重做侧栏。
-- 要做「管理面板」时，client 半的挂载点、slot key、props 与构建约束见 [`dsh-web-ui.md`](./dsh-web-ui.md)（结论：`main` 面板 + `sidebar.panellist` 入口，与官方 Plugins 页同构）；数据通过 `remote.session.list` + 自有 detail 命令/路由拿。
+- 要做「管理面板」时，client 半的挂载点、slot key、props 与构建约束见 [`dsh-web-ui.md`](./dsh-web-ui.md)；入口形态按 D-023：不注册 `sidebar.panellist`，在 `sidebar.workspaces.session.menu.item` 注入菜单项并用 `ctx.layout.selectPanel('session-butler')` 打开 `main` 面板。数据通过 `remote.session.list` + 自有 detail 命令/路由拿。
 - 详情页「轮数/token」优先用投影（`sessionStats`/`tokenUsage`/`contextPressure`）；冷会话用 `sessionProjectionCache.cachedSnapshot(header, ['title','sessionStats','tokenUsage'])`（零 I/O、可能稍旧），没有缓存时再 `readSession` 全量 fold。
 
 ### 6.4 刷新与一致性

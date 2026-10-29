@@ -13,8 +13,7 @@ export const NS = 'session-butler'
 
 /** English dictionary (complete key set drives the other dictionaries). */
 export const EN: Readonly<Record<string, string>> = {
-  nav: 'Session manager',
-  title: 'Session manager',
+  title: 'Session library',
   subtitle: 'Browse, inspect and clean up sessions across workspaces.',
   refresh: 'Refresh',
   'tabs.sessions': 'Sessions',
@@ -100,6 +99,8 @@ export const EN: Readonly<Record<string, string>> = {
   'status.error': '{code}: {message}',
   'footer.permanentDisabled': 'Permanent deletion is disabled by the plugin configuration.',
   'footer.retention': 'Retention: {days} day(s). Expired entries are only marked, never auto-purged.',
+  'menu.details': 'Session details…',
+  'menu.library': 'Session library…',
   'plugin.health.title': 'Threadloom health',
   'plugin.health.refresh': 'Refresh',
   'plugin.health.loading': 'Checking Threadloom health…',
@@ -127,17 +128,17 @@ export const EN: Readonly<Record<string, string>> = {
   'plugin.config.settle': 'Running settle timeout (ms)',
   'plugin.config.cascade': 'Cascade subagent sessions',
   'plugin.config.permanent': 'Permanent deletion',
-  'plugin.config.panelEntry': 'Show sidebar entry',
+  'plugin.config.inlineMenu': 'Session row menu actions',
   'plugin.config.permanent.disabled': 'Disabled',
   'plugin.config.permanent.confirm': 'Confirm with session id',
   'plugin.config.summary': 'Configure trash retention, cascade behaviour and permanent deletion.',
+  'plugin.library.open': 'Open session library',
   'plugin.badge': 'Threadloom',
 }
 
 /** Chinese dictionary (must cover every English key). */
 export const ZH: Readonly<Record<string, string>> = {
-  nav: '会话管理',
-  title: '会话管理',
+  title: '会话库',
   subtitle: '跨 workspace 浏览、查看与清理会话。',
   refresh: '刷新',
   'tabs.sessions': '会话',
@@ -223,6 +224,8 @@ export const ZH: Readonly<Record<string, string>> = {
   'status.error': '{code}：{message}',
   'footer.permanentDisabled': '永久删除已被插件配置禁用。',
   'footer.retention': '保留期：{days} 天。到期条目只做标记，不自动清理。',
+  'menu.details': '会话详情…',
+  'menu.library': '会话库…',
   'plugin.health.title': 'Threadloom 健康状态',
   'plugin.health.refresh': '刷新',
   'plugin.health.loading': '正在检查 Threadloom 健康状态…',
@@ -250,9 +253,10 @@ export const ZH: Readonly<Record<string, string>> = {
   'plugin.config.settle': '运行中会话等待超时（毫秒）',
   'plugin.config.cascade': '级联删除子代理会话',
   'plugin.config.permanent': '永久删除',
-  'plugin.config.panelEntry': '显示侧栏入口',
+  'plugin.config.inlineMenu': '会话行菜单动作',
   'plugin.config.permanent.disabled': '禁用',
   'plugin.config.permanent.confirm': '需输入会话 ID 确认',
   'plugin.config.summary': '配置回收站保留期、级联行为与永久删除。',
+  'plugin.library.open': '打开会话库',
   'plugin.badge': 'Threadloom',
 }

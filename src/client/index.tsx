@@ -1,10 +1,10 @@
 /**
  * Threadloom — Client half (M2: Web management page).
  *
- * Registers one keyed `main` panel and one `sidebar.panellist` row through two
- * independent slot injections: the slots are declared by different owner
- * plugins, so a single `main` injection can run before the sidebar slot exists.
- * Locale dictionaries are registered on mount and released with the plugin.
+ * Registers one keyed `main` panel plus Codex-style inline contributions to
+ * each Session row's "..." menu. There is intentionally no persistent sidebar
+ * "session manager" button: the library is opened from the row menu or from the
+ * Plugins page, and the panel is navigated through the layout service.
  *
  * @module dsh-session-butler/client
  */
@@ -19,6 +19,9 @@ import type {
   SlotRegistrationLike,
 } from './contract.js'
 import { EN, NS, ZH } from './locale.js'
+import { ThreadloomDetailMenuItem, ThreadloomLibraryMenuItem } from './menu.js'
+import type { SessionMenuItemPropsLike } from './menu.js'
+import { clearThreadloomNavigation, setPanelOpener } from './navigation.js'
 import { SessionButlerIcon, SessionButlerPage, SessionDetailView } from './page.js'
 import {
   ROW_CONFIG_KEY,
@@ -33,7 +36,7 @@ import {
  * workspace navigation service (open a session from the management page), and
  * the session store's manual refresh after a trash/restore.
  */
-export const inject: string[] = ['slots', 'locale', 'uiWorkspace', 'sessions']
+export const inject: string[] = ['slots', 'locale', 'uiWorkspace', 'sessions', 'layout']
 
 export { SessionButlerIcon, SessionButlerPage, SessionDetailView }
 
@@ -69,38 +72,64 @@ function applyInner(ctx: ClientContextLike): void {
           })
         },
       }
-      // The two slots belong to different owner plugins: `main` is declared by
-      // the layout, `sidebar.panellist` only when the sidebar plugin activates.
-      // Injecting both through `main` therefore raced the sidebar declaration
-      // and threw `slot "sidebar.panellist" is not declared` in a real Web boot.
+      // The page registers in the layout-declared `main` slot; every other
+      // contribution lives in its own owner-declared slot and injects
+      // independently, so a host that only declares one of them still boots.
       disposers.push(ctx.slots.inject('main', () => ctx.slots.register(
         { name: 'main', key: PANEL_ID, locale: NS, inject: () => actions },
         SessionButlerPage as unknown as (props: never) => unknown,
       )))
-      // The sidebar row is optional (panelEntryEnabled). The client half reads
-      // the plugin's own volatile Config through the DSH settings service; when
-      // that service is absent (older host) the row stays registered.
+      // Codex has no "session management" button, and neither do we: the panel
+      // is opened through the layout service from the Session row's own "..."
+      // menu or from the Plugins page. Without that service the panel stays
+      // registered but gets no entry point, so no dead buttons are rendered.
+      const layout = ctx.layout ?? (ctx.get?.('layout') as { selectPanel?: (panelId: string | null) => void } | undefined)
+      const selectPanel = layout?.selectPanel?.bind(layout)
+      const openPanel = selectPanel === undefined
+        ? undefined
+        : (): void => { selectPanel(PANEL_ID) }
+      if (openPanel !== undefined) setPanelOpener(openPanel)
+
+      // Session-row "..." menu contributions (see menu.tsx). The row menu slot
+      // is declared by the workspace browser; injecting waits for it, and hosts
+      // without that slot simply never mount these entries.
       const configForms = ctx.get?.('configForms') as ConfigFormsLike | undefined
       const clientConfig = configForms?.get<ClientConfigLike>(PLUGIN_ROW_ID)
-      let sidebarDisposer: (() => void) | undefined
-      const registerSidebar = (): (() => void) => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
-        { name: 'sidebar.panellist', id: PANEL_ID, order: 6, label: () => t('nav'), locale: NS },
-        SessionButlerIcon as unknown as (props: never) => unknown,
-      ))
-      const syncSidebar = (): void => {
-        const enabled = clientConfig?.getSnapshot().value?.panelEntryEnabled !== false
-        if (enabled && sidebarDisposer === undefined) {
-          sidebarDisposer = registerSidebar()
-        } else if (!enabled && sidebarDisposer !== undefined) {
-          sidebarDisposer()
-          sidebarDisposer = undefined
+      let menuDisposers: Array<() => void> = []
+      const disposeMenus = (): void => {
+        for (const dispose of menuDisposers.reverse()) {
+          try {
+            dispose()
+          } catch {
+            // The slot owner already tore this registration down.
+          }
         }
+        menuDisposers = []
       }
-      syncSidebar()
-      const unsubscribeConfig = clientConfig?.subscribe(syncSidebar)
+      const registerMenus = (): void => {
+        if (openPanel === undefined || menuDisposers.length > 0) return
+        const detail = (props: SessionMenuItemPropsLike): unknown => ThreadloomDetailMenuItem({ ...props, t })
+        const library = (props: SessionMenuItemPropsLike): unknown => ThreadloomLibraryMenuItem({ ...props, t })
+        menuDisposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register(
+          { name: 'sidebar.workspaces.session.menu.item', id: 'threadloom.detail', order: 460, locale: NS },
+          detail as unknown as (props: never) => unknown,
+        )))
+        menuDisposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register(
+          { name: 'sidebar.workspaces.session.menu.item', id: 'threadloom.library', order: 470, locale: NS },
+          library as unknown as (props: never) => unknown,
+        )))
+      }
+      const syncMenus = (): void => {
+        const enabled = clientConfig?.getSnapshot().value?.inlineMenuEnabled !== false
+        if (enabled) registerMenus()
+        else disposeMenus()
+      }
+      syncMenus()
+      const unsubscribeConfig = clientConfig?.subscribe(syncMenus)
       disposers.push(() => {
         unsubscribeConfig?.()
-        sidebarDisposer?.()
+        disposeMenus()
+        clearThreadloomNavigation()
       })
 
       // DSH Plugins page contributions (D3.0). Each slot is declared by the

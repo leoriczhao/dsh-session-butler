@@ -86,7 +86,7 @@ export interface BridgeStatus {
 
 /** Configuration values the Client half reads from DSH settings. */
 export interface ClientConfigLike {
-  readonly panelEntryEnabled?: boolean
+  readonly inlineMenuEnabled?: boolean
   readonly trashRetentionDays?: number
   readonly cascadeSubagents?: boolean
   readonly permanentDelete?: 'disabled' | 'confirm'
@@ -264,6 +264,8 @@ export interface ClientContextLike {
   }
   readonly uiWorkspace: { openSession(sessionId: string): void }
   readonly sessions?: { refresh(): Promise<void> }
+  /** Layout navigation service: select a registered `main` panel (or null for the Conversation). */
+  readonly layout?: { selectPanel(panelId: string | null): void }
   /** Cordis service lookup; used for optional services like `configForms`. */
   get?(name: string): unknown
   effect(execute: () => (() => void) | void, label?: string): unknown

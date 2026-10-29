@@ -31,9 +31,17 @@ dsh plugin --profile <profile> add dsh-session-butler@<version>
 dsh plugin --profile <profile> remove dsh-session-butler
 ```
 
-## Web 管理页（M2 + M3）
+## 入口（D3.0b，Codex 式）
 
-装好插件并启动 Web profile 后，侧栏会出现「会话管理」入口；页面分两个标签页：
+没有独立的「会话管理」按钮；入口内联在日常使用的位置：
+
+- **会话行 "..." 菜单**：hover 会话行 → 点 "..." → **会话详情…**（打开该会话的 Threadloom 详情弹窗）、**会话库…**（打开完整 Library / 回收站）；
+- **DSH Plugins 页** → Threadloom bundle → 智能区块里的 **打开会话库**；
+- 完整 Library 仍是一个 keyed `main` 面板，只从上面两处打开，不占用侧栏导航。
+
+## Web 会话库（M2 + M3 + D3.0b）
+
+打开后页面分两个标签页：
 
 - **会话**：列表 + 过滤（标题/路径/id、workspace、显示已归档/子代理）；行内「详情」打开弹窗（轮数/步骤/消息/工具调用/token/日志大小/血缘/preset）；「打开」跳转会话；「移入回收站」先弹出确认（运行中会提示先停止，迁移中的会话会被拒绝，可勾选级联子代理）。
 - **多选批量**：两个标签页都有全选/清空/选中计数；会话页可「移入回收站（n）」（逐项预检迁移态并汇总级联数），回收站页可「恢复（n）」；批量结果按成功/失败项聚合展示，失败项不影响其余项。
@@ -45,7 +53,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
 插件的配置字段全部声明为 DSH 的 volatile 配置，因此可以在 **DSH Plugins 页面**直接编辑（保存写回 profile patch，无需改文件）：
 
 - 打开 DSH Plugins 页 → 选中 **Threadloom** bundle → 行 **session-butler** 的「配置」入口；
-- 页面包含：回收站保留天数、运行中等待上限、级联子代理、侧栏入口开关、永久删除级别；
+- 页面包含：回收站保留天数、运行中等待上限、级联子代理、会话行菜单动作开关、永久删除级别；
 - bundle 页与插件详情页还会显示 **功能级健康**（版本、会话/回收站/运行中数量、存储可写性、后端能力、最近错误），数据来自插件自报的 `/session-butler/api/status`。
 
 > 需要 DSH 0.2.2+ 的组合才会出现这些入口；旧版本上 Settings 表单与插件页区块会静默跳过，主管理页/命令/工具不受影响。
@@ -92,7 +100,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
     cascadeSubagents: true        # 删除时级联子代理会话（fork 永不级联）
     permanentDelete: disabled     # disabled | confirm（confirm 需输入完整 session id）
     liveSettleTimeoutMs: 3000     # 运行中会话先归档停止、再等待的毫秒上限
-    panelEntryEnabled: true       # 是否在 DSH 侧栏显示 Threadloom 入口
+    inlineMenuEnabled: true       # 是否在会话行 "..." 菜单注入 Threadloom 动作
 ```
 
 ## 安全边界

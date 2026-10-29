@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — D3.0: 与 DSH 插件管理集成 + 功能级健康快照 (2026-10-28)
 
-- **配置表单**：配置字段全部声明为 DSH `.volatile()`，Plugins 页的插件行出现「配置」入口，`plugins.row.config` 渲染表单并写回 profile patch（单源，无第二配置存储）。新增 `liveSettleTimeoutMs`（默认 3000）与 `panelEntryEnabled`（默认 true）。
+- **配置表单**：配置字段全部声明为 DSH `.volatile()`，Plugins 页的插件行出现「配置」入口，`plugins.row.config` 渲染表单并写回 profile patch（单源，无第二配置存储）。新增 `liveSettleTimeoutMs`（默认 3000）与 `inlineMenuEnabled`（默认 true）。
 - **插件页贡献**：`plugins.bundle.config` 显示状态区块，`plugins.detail.badge`/`plugins.detail.section` 提供健康徽标与诊断详情；宿主未声明 slot 时静默跳过（兼容 rc.2 组合）。
-- **侧栏入口可关**：客户端经 DSH `configForms` 读取 volatile 配置，`panelEntryEnabled=false` 时动态注销侧栏行，不影响主面板/命令/工具。
+- **入口内联、可关**：客户端经 DSH `configForms` 读取 volatile 配置，`inlineMenuEnabled=false` 时热注销会话行 "..." 菜单的两项贡献；不注册任何侧栏常驻入口。
 - **健康快照**：`/session-butler/api/status` 扩展为 `{ ok, version, host, bridge, storage, backends, counts, errors }`；`service.health()` 探测回收站/会话目录可写性、可选后端能力，并保留最近 20 条桥错误；管理页轮询同一接口。
 - **测试**：配置 volatile 句柄、插件页 slot 注册/清理、健康快照与桥 status 断言；`pnpm run verify` 59 tests + 57 package checks 全绿。
 
@@ -18,11 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **行配置页崩溃**：`plugins.row.config` 的 owner 传入的是 `{ state, mutate }` 页面表单，而不是 `ConfigForm` 实例；首版调用 `form.getSnapshot()` 触发 `TypeError`，配置页只渲染出诊断区块。组件改为读 `form.state`、调用 `form.mutate(ops, snapshot.revision)`（隔离 0.2.2 + Playwright 发现）。
 - **配置不热生效**：volatile 配置值在 Host service 构造时被取成纯值，保存后 `/status` 仍返回旧值。service 的 4 个配置项（retention/cascade/permanentDelete/settle）改为**使用点读取**，由 `index.ts` 传 `() => readConfigValue(config.x)`；保存后无需重启即生效。
-- **真实浏览器验收**（隔离 `DSH_HOME` + Playwright Chromium，DSH 0.2.2-alpha.2）：bundle 页健康徽标/状态区块显示 **Healthy**；行配置页出现 5 个字段，保存 `trashRetentionDays: 45 → 60` 写回 profile `cordis.patch.yml` 且 `/session-butler/api/status` 立即返回 60；`panelEntryEnabled` 取消后侧栏行消失、恢复后出现；主管理页无 console/page error。证据：`docs/evidence/plugin-health-bundle.png`、`docs/evidence/plugin-row-config.png`。
+- **真实浏览器验收**（隔离 `DSH_HOME` + Playwright Chromium，DSH 0.2.2-alpha.2）：bundle 页健康徽标/状态区块显示 **Healthy**；行配置页出现 5 个字段，保存 `trashRetentionDays: 45 → 60` 写回 profile `cordis.patch.yml` 且 `/session-butler/api/status` 立即返回 60；`inlineMenuEnabled` 取消后会话行菜单项即时消失、恢复后重新出现；主管理页无 console/page error。证据：`docs/evidence/plugin-health-bundle.png`、`plugin-row-config.png`、`inline-session-menu.png`。
+
+### Changed — Codex 式入口修订（D-023，2026-10-29）
+
+- **删除侧栏「会话管理」按钮**：ChatGPT/Codex 没有常驻会话管理按钮；`sidebar.panellist` 注册已移除。
+- **会话行 "..." 菜单内联**：新增 `sidebar.workspaces.session.menu.item` 两个贡献——`会话详情…`（order 460）与 `会话库…`（order 470），带分隔线、复制宿主菜单 cell 样式（`ui-primitives` 的 Menu.module.css 视觉契约）。
+- **面板打开方式**：`inject: ['layout']` + `ctx.layout.selectPanel('session-butler')`；菜单项与 Plugins 页 bundle 区块的「打开会话库」按钮共用 `src/client/navigation.ts` 的一次性请求总线，面板消费后按需切 Tab/打开详情。
+- **配置字段**：`panelEntryEnabled` → `inlineMenuEnabled`（默认 true）。
+- **真实浏览器验收**：侧栏无「会话管理」；菜单出现 `会话详情…`/`会话库…`；点击详情打开面板并弹出详情；从菜单与插件页均可打开 Library；`inlineMenuEnabled` 实时增删菜单项；无 console/page error。证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`。
 
 ### Docs
 
-- `docs/d3-console-design.md` D3 设计定稿；`docs/decisions.md` D-021/D-022 标记 accepted（用户 2026-10-28 确认）；`docs/usage.md` 增加 DSH Plugins 页面配置说明。
+- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023 新增（用户 2026-10-29 纠正）；`docs/usage.md` 重写入口说明与配置键。
 
 ## [0.1.2] - 2026-10-28
 

@@ -17,7 +17,7 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 
 | 能力 | 状态 |
 |---|---|
-| 跨 workspace 统一列表 / 筛选 | ✅ M2（main panel + sidebar 入口；标题/路径/id 过滤 + workspace/归档/子代理筛选） |
+| 跨 workspace 统一列表 / 筛选 | ✅ M2（会话行 "..." 菜单 → 会话库；标题/路径/id 过滤 + workspace/归档/子代理筛选） |
 | 会话详情（cwd / 状态 / 时间 / 归属 workspace） | ✅ M3（行内信息 + 详情弹窗：轮数/步骤/消息数/工具调用/token/日志字节/血缘树/preset/enrichment） |
 | 改名 / 置顶 / 归档 / 取消归档 | ✅ 复用 DSH 官方 UI（本插件页面不重复提供；M3 批量范围仅删除/恢复） |
 | **删除（回收站优先 + 恢复 + 永久删除）** | ✅ M1 Host 核心 + ✅ M2 管理页/同源桥（`/session-butler` 命令同样可用） |
@@ -48,7 +48,7 @@ pnpm run verify        # typecheck + build + tests + npm pack 契约校验
 ```bash
 dsh --profile tl-web --from-default-profile web --dump-config   # 先建临时 web profile
 dsh plugin --profile tl-web add /home/leoric/code/dsh-session-butler
-dsh --profile tl-web --port 3099 --no-open                      # 打开打印的 token URL，点侧栏「会话管理」
+dsh --profile tl-web --port 3099 --no-open                      # 打开打印的 token URL；hover 会话行 → "..." → 「会话库…」
 ```
 
 ## 目录
@@ -62,7 +62,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 │   ├── config.ts                # Schemastery 配置
 │   ├── shared/                  # 稳定标识 + 稳定错误码
 │   ├── host/                    # Host 半：ports/locate/lineage/trash-store/read-model/service/tools/bridge/command
-│   └── client/                  # Client 半：index/page/bridge/locale/contract
+│   └── client/                  # Client 半：index/page/menu/navigation/bridge/locale/contract
 ├── scripts/                     # build-client / validate-package / clean
 ├── tests/                       # node:test 产物与 manifest 冒烟
 ├── docs/                        # 见下
@@ -90,7 +90,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 
 ## 决策状态
 
-已定：包名/发布渠道/MIT（D-002）、删除采用回收站优先（D-003）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 用 main panel + sidebar（D-009）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
+已定：包名/发布渠道/MIT（D-002）、删除采用回收站优先（D-003）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 入口内联会话行 "..." 菜单、不设侧栏按钮（D-023，取代 D-009 的 sidebar 部分）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
 
 已定（D3）：**D-021** D3 以「库/详情/续聊/分叉/组织」为核心、删除/回收站降为清理模块；**D-022** 插件管理集成（复用 DSH Plugins 页/详情/启停 + `plugins.*` 扩展点 + 运行期健康，不重做插件管理）。D3.0 已落地。
 

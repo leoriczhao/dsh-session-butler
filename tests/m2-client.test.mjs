@@ -31,7 +31,7 @@ function makeContext({ immediateInjection = true } = {}) {
   const injectionCallbacks = new Map()
   const injectionCleanups = new Map()
   let effectCleanup
-  const observed = { opened: [], refreshes: 0 }
+  const observed = { opened: [], refreshes: 0, panels: [] }
   const ctx = {
     locale: {
       register(namespace, language, dict) {
@@ -62,6 +62,7 @@ function makeContext({ immediateInjection = true } = {}) {
     },
     uiWorkspace: { openSession(id) { observed.opened.push(id) } },
     sessions: { async refresh() { observed.refreshes += 1 } },
+    layout: { selectPanel(id) { observed.panels.push(id) } },
     effect(execute) {
       effectCleanup = execute()
       return () => { effectCleanup?.() }
@@ -80,12 +81,13 @@ function makeContext({ immediateInjection = true } = {}) {
   }
 }
 
-test('apply registers the main panel and the sidebar row through independent injections', async () => {
+test('apply registers the main panel and Codex-style session menu items, not a sidebar row', async () => {
   const plugin = await loadPlugin()
   assert.ok(plugin.inject.includes('slots'))
   assert.ok(plugin.inject.includes('locale'))
   assert.ok(plugin.inject.includes('uiWorkspace'))
   assert.ok(plugin.inject.includes('sessions'))
+  assert.ok(plugin.inject.includes('layout'))
 
   const fake = makeContext()
   plugin.apply(fake.ctx)
@@ -95,7 +97,7 @@ test('apply registers the main panel and the sidebar row through independent inj
   assert.ok(fake.localeRegistrations.every(entry => entry.namespace === 'session-butler'))
   assert.ok(fake.localeRegistrations.every(entry => typeof entry.dict.title === 'string'))
 
-  assert.equal(fake.slotRegistrations.length, 6)
+  assert.equal(fake.slotRegistrations.length, 7)
   const pluginSlots = fake.slotRegistrations.filter(entry => entry.options.name.startsWith('plugins.'))
   assert.deepEqual(pluginSlots.map(entry => entry.options.name).sort(), [
     'plugins.bundle.config',
@@ -107,19 +109,20 @@ test('apply registers the main panel and the sidebar row through independent inj
   assert.equal(rowConfig.options.key, 'dsh-session-butler#session-butler')
   assert.equal(pluginSlots.find(entry => entry.options.name === 'plugins.bundle.config').options.key, 'dsh-session-butler')
   const panel = fake.slotRegistrations.find(entry => entry.options.name === 'main')
-  const row = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.panellist')
   assert.ok(panel)
-  assert.ok(row)
-  assert.equal(panel.options.name, 'main')
   assert.equal(panel.options.key, 'session-butler')
   assert.equal(panel.options.locale, 'session-butler')
   const actions = panel.options.inject()
   assert.deepEqual(Object.keys(actions).sort(), ['call', 'openSession', 'refreshSessions'])
-  assert.equal(row.options.name, 'sidebar.panellist')
-  assert.equal(row.options.id, 'session-butler')
-  assert.equal(row.options.label(), '会话管理')
+
+  // No permanent navigation button: the old `sidebar.panellist` row is gone.
+  assert.equal(fake.slotRegistrations.some(entry => entry.options.name === 'sidebar.panellist'), false)
+  const menus = fake.slotRegistrations.filter(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
+  assert.deepEqual(menus.map(entry => entry.options.id), ['threadloom.detail', 'threadloom.library'])
+  assert.deepEqual(menus.map(entry => entry.options.order), [460, 470])
+  assert.ok(menus.every(entry => entry.options.locale === 'session-butler'))
   assert.equal(typeof panel.component, 'function')
-  assert.equal(typeof row.component, 'function')
+  assert.ok(menus.every(entry => typeof entry.component === 'function'))
 })
 
 test('each slot registers only after its own declaration', async () => {
@@ -129,18 +132,21 @@ test('each slot registers only after its own declaration', async () => {
   assert.equal(fake.slotRegistrations.length, 0)
   assert.equal(fake.localeRegistrations.length, 2)
 
-  // The sidebar slot is independent from `main`: declaring only the panel must
-  // not attempt to register `sidebar.panellist` (the real boot bug).
+  // The row-menu slot is independent from `main`: declaring only the panel must
+  // not attempt to register its entries (the real boot bug class).
   const cleanupPanel = fake.getInjectionCallback('main')()
   assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), ['main'])
   assert.equal(typeof cleanupPanel, 'function')
-  assert.equal(fake.slotRegistrations.some(entry => entry.options.name === 'sidebar.panellist'), false)
+  assert.equal(fake.slotRegistrations.some(entry => entry.options.name === 'sidebar.workspaces.session.menu.item'), false)
 
-  const cleanupRow = fake.getInjectionCallback('sidebar.panellist')()
-  assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), ['main', 'sidebar.panellist'])
-  cleanupRow()
+  const cleanupDetail = fake.getInjectionCallback('sidebar.workspaces.session.menu.item')()
+  assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), [
+    'main',
+    'sidebar.workspaces.session.menu.item',
+  ])
+  cleanupDetail()
   cleanupPanel()
-  assert.deepEqual(fake.slotCleanups, ['sidebar.panellist', 'main'])
+  assert.deepEqual(fake.slotCleanups, ['sidebar.workspaces.session.menu.item', 'main'])
 })
 
 test('effect disposal releases locale and slot registrations', async () => {
@@ -156,7 +162,8 @@ test('effect disposal releases locale and slot registrations', async () => {
     'plugins.detail.badge',
     'plugins.bundle.config',
     'plugins.row.config',
-    'sidebar.panellist',
+    'sidebar.workspaces.session.menu.item',
+    'sidebar.workspaces.session.menu.item',
     'main',
   ])
 })
@@ -206,7 +213,7 @@ test('the page renders session rows with the injected locale and actions', async
     refreshSessions: () => {},
   }
   const html = renderToStaticMarkup(React.createElement(panel.component, props))
-  assert.match(html, /会话管理/)
+  assert.match(html, /会话库/)
   assert.match(html, /alpha/)
   assert.match(html, /移入回收站/)
   assert.match(html, /beta/)

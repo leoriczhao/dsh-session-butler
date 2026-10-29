@@ -21,6 +21,7 @@ import type { ReactElement } from 'react'
 import { PLUGIN_ID, PLUGIN_ROW_ID } from '../shared/identity.js'
 import { callBridge } from './bridge.js'
 import type { BridgeStatus, ClientConfigLike, ConfigPageFormLike } from './contract.js'
+import { canOpenThreadloom, requestThreadloom } from './navigation.js'
 
 /** Key the plugin manager addresses a row's configuration page by. */
 export const ROW_CONFIG_KEY = `${PLUGIN_ID}#${PLUGIN_ROW_ID}`
@@ -245,11 +246,11 @@ export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
           onChange={event => { void save('cascadeSubagents', event.target.checked) }}
         />
       </FieldRow>
-      <FieldRow label={t('plugin.config.panelEntry')}>
+      <FieldRow label={t('plugin.config.inlineMenu')}>
         <input
           className="sb-plugin-check" type="checkbox" disabled={disabled}
-          checked={values.panelEntryEnabled ?? true}
-          onChange={event => { void save('panelEntryEnabled', event.target.checked) }}
+          checked={values.inlineMenuEnabled ?? true}
+          onChange={event => { void save('inlineMenuEnabled', event.target.checked) }}
         />
       </FieldRow>
       <FieldRow label={t('plugin.config.permanent')}>
@@ -271,7 +272,18 @@ export function ThreadloomRowConfig(props: ConfigViewPropsLike): ReactElement {
 /** The bundle-page status block contributed to `plugins.bundle.config`. */
 export function ThreadloomBundleConfig({ t }: { readonly t: Translate }): ReactElement {
   const { health, error, loading, refresh } = useHealth()
-  return <HealthBlock health={health} error={error} loading={loading} t={t} onRefresh={refresh} />
+  return (
+    <>
+      <HealthBlock health={health} error={error} loading={loading} t={t} onRefresh={refresh} />
+      {canOpenThreadloom() ? (
+        <div className="sb-plugin-block">
+          <button type="button" className="sb-plugin-btn" onClick={() => { requestThreadloom('library') }}>
+            {t('plugin.library.open')}
+          </button>
+        </div>
+      ) : null}
+    </>
+  )
 }
 
 /** The health badge contributed to `plugins.detail.badge`. */

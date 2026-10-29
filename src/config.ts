@@ -51,11 +51,11 @@ export interface ThreadloomConfig {
    */
   liveSettleTimeoutMs: Volatile<number>
   /**
-   * Whether the sidebar entry for the management page is registered. Turning it
-   * off keeps the page reachable through the DSH main-panel registry but hides
-   * the sidebar row; commands and agent tools stay available either way.
+   * Whether Threadloom adds its actions to every Session row's "..." menu
+   * (session details and the session library). Turning it off removes those
+   * inline entries only; commands, agent tools and the Plugins-page block stay.
    */
-  panelEntryEnabled: Volatile<boolean>
+  inlineMenuEnabled: Volatile<boolean>
 }
 
 /**
@@ -95,9 +95,9 @@ export const Config = z.object({
       'Milliseconds to wait for a running session to stop after archiving it before refusing the trash request.',
     )
     .volatile(),
-  panelEntryEnabled: z
+  inlineMenuEnabled: z
     .boolean()
     .default(true)
-    .description('Register the Threadloom entry in the DSH sidebar panel list.')
+    .description('Add Threadloom actions to each Session row\'s "..." menu.')
     .volatile(),
 })

@@ -13,7 +13,7 @@ export const PLUGIN_ID = 'dsh-session-butler'
 /** Loader row id declared in `cordis.patch.yml`; profile patches target it by id. */
 export const PLUGIN_ROW_ID = 'session-butler'
 
-/** Key of the management page in the `main` slot, and the `sidebar.panellist` row id. */
+/** Key of the library page in the `main` slot (opened from the Session row menu, D-023). */
 export const PANEL_ID = 'session-butler'
 
 /**

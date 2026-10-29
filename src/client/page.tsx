@@ -24,6 +24,7 @@ import type {
   TrashEntryLike,
   WorkspaceViewLike,
 } from './contract.js'
+import { consumeThreadloomRequest, subscribeThreadloomRequests } from './navigation.js'
 
 /** Host-enforced ceiling for one batch request. */
 const MAX_BATCH_SIZE = 50
@@ -474,11 +475,11 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
     })
   }, [])
 
-  const openDetails = useCallback(async (row: SessionSummaryLike): Promise<void> => {
+  const openDetailsById = useCallback(async (sessionId: string): Promise<void> => {
     setBusy(true)
     setMessage(null)
     try {
-      const detail = await call<SessionDetailLike>('detail', { sessionId: row.id })
+      const detail = await call<SessionDetailLike>('detail', { sessionId })
       setDialog({ kind: 'detail', detail })
     } catch (error) {
       fail(error)
@@ -486,6 +487,29 @@ export function SessionButlerPage(props: SessionButlerPageProps): ReactElement {
       setBusy(false)
     }
   }, [call, fail])
+
+  const openDetails = useCallback(async (row: SessionSummaryLike): Promise<void> => {
+    await openDetailsById(row.id)
+  }, [openDetailsById])
+
+  // The row "..." menu lives in a different slot than this panel, so it leaves
+  // a one-shot request here; apply it on mount and on every new request.
+  useEffect(() => {
+    const apply = (): void => {
+      const request = consumeThreadloomRequest()
+      if (request === null) return
+      if (request.view === 'trash') {
+        setTab('trash')
+        return
+      }
+      setTab('sessions')
+      if (request.view === 'detail' && request.sessionId !== undefined) {
+        void openDetailsById(request.sessionId)
+      }
+    }
+    apply()
+    return subscribeThreadloomRequests(apply)
+  }, [openDetailsById])
 
   const requestBatchTrash = useCallback(async (): Promise<void> => {
     const ids = [...selectedSessions]

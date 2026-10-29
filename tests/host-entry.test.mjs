@@ -23,7 +23,7 @@ test('config schema resolves the documented safe defaults', () => {
   assert.equal(config.cascadeSubagents.get(), true)
   assert.equal(config.permanentDelete.get(), 'disabled')
   assert.equal(config.liveSettleTimeoutMs.get(), 3000)
-  assert.equal(config.panelEntryEnabled.get(), true)
+  assert.equal(config.inlineMenuEnabled.get(), true)
 })
 
 test('config schema rejects an out-of-range retention', () => {

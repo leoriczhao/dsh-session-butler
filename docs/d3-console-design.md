@@ -3,6 +3,8 @@
 > 输入：`research/2026-10-28-codex-desktop-ui-audit.md`（Codex 桌面 UI 实机）、`research/codex-session-management.md`（CLI/app-server 能力矩阵）、`research/dsh-session-management-v2.md`（DSH 七个能力面）、`docs/dsh-web-ui.md`（slot/挂载）、`research/2026-10-28-dsh-plugin-management-survey.md`（插件管理接入面，进行中）、`docs/decisions.md`（D-001…D-020）。
 >
 > 状态：**已确认（用户 2026-10-28）**；D3.0 已落地（配置 volatile + 插件页 `plugins.*` 四贡献 + 健康快照），其余阶段按 §10 推进。本文回答四个问题：**D3 长什么样、双用户怎么用、删除/回收站到底重不重要、如何与 DSH 已有插件管理 feature 结合。**
+>
+> **v0.2 修订（2026-10-29，用户纠正）**：ChatGPT/Codex **没有「会话管理」按钮**——会话管理内联在侧栏会话行（hover pin/archive、"..." 菜单、搜索/筛选）。据此删除侧栏 `sidebar.panellist` 入口，改为会话行 "..." 菜单两个动作（`会话详情…` / `会话库…`），完整 Library 通过 `ctx.layout.selectPanel` 从菜单或 Plugins 页打开。决策见 D-023（D-009 相应作废）。
 
 ---
 
@@ -11,7 +13,7 @@
 1. **D3 = 一个控制台（人）+ 一组工具（agent）+ 一套插件管理集成（安装/设置/健康）。** 不是"回收站页面 + 删除按钮"。
 2. **删除/回收站不是核心，降级为"清理（Cleanup）"模块**（见 §7）。核心是 **Library（检索/分组/预览）+ Detail（理解血缘与成本）+ Resume/Fork（接回与分支）+ Organize（置顶/归档/标签/备注）**。依据：Codex 实机里删除位于右键菜单最底部、无快捷键、无回收站；归档才是行内主生命周期动作。
 3. **"完整"的定义**：覆盖会话的发现 → 理解 → 组织 → 接回 → 分支 → 清理 → 审计 七个环节；每个环节在 agent tool / 人类 UI / HTTP 桥 / Host 服务四个面都有明确落点（能做的做，不能做的写清楚为什么）。
-4. **不重复 DSH 官方**：pin/rename/archive/fork/打开 官方已有，D3 只在"批量、跨 workspace 视图、详情页、回收站、标签/备注、导出"上补位；官方行菜单不能挂第三方动作（slot 限制），所以插件入口是 main 面板 + sidebar 入口 + 设置页 + 会话行装饰。
+4. **不重复 DSH 官方**：pin/rename/archive/fork/打开 官方已有，D3 只在"批量、跨 workspace 视图、详情页、回收站、标签/备注、导出"上补位；**入口沿用 Codex 形态**——会话行 "..." 菜单内联（DSH `sidebar.workspaces.session.menu.item` 支持第三方按 order 插入；已核实），完整 Library 由菜单/Plugins 页经 `ctx.layout.selectPanel` 打开，**不设常驻「会话管理」按钮**。
 5. **与插件管理 feature 的整合是 D3 的一等目标**：插件详情/健康/设置页/安装升级/权限说明都必须像"官方插件"一样可见、可控、可诊断（§8）。
 
 ---
@@ -117,7 +119,12 @@ Threadloom（main 面板，keyed）
 └─ 设置 Settings        # 插件管理 tab：开关/策略/诊断
 \`\`\`
 
-侧栏保留一个入口行（`sidebar.panellist`），只做"打开控制台/最近会话"两件事，不复制官方会话列表。
+**入口（Codex 式，无独立按钮）**：
+
+- 会话行 "..." 菜单：`会话详情…`（打开当前行会话详情）、`会话库…`（打开 Library/Trash）；
+- Plugins 页 Threadloom bundle 区块：「打开会话库」按钮；
+- 完整 Library 仍是 keyed `main` 面板，但只由上述入口经 `ctx.layout.selectPanel('session-butler')` 打开；
+- 不注册 `sidebar.panellist`，不在侧栏增加任何常驻行。
 
 ### 4.2 会话库（Library）
 
@@ -242,7 +249,7 @@ Threadloom（main 面板，keyed）
 
 ### 8.3 配置：`volatile` + row 页表单，单源写 profile patch
 
-- 现有 3 个 Config 字段（`trashRetentionDays` / `cascadeSubagents` / `permanentDelete`，`src/config.ts`）**必须补 `.volatile()`** 才会进入 DSH 的表单投影；P0 还要新增 `liveSettleTimeoutMs`、`panelEntryEnabled` 两个字段（后者控制侧栏入口是否注册）。
+- 现有 3 个 Config 字段（`trashRetentionDays` / `cascadeSubagents` / `permanentDelete`，`src/config.ts`）**必须补 `.volatile()`** 才会进入 DSH 的表单投影；P0 新增 `liveSettleTimeoutMs`（live 停止等待）与 `inlineMenuEnabled`（控制会话行 "..." 菜单贡献，默认 true）。
 - 表单来源：Plugins 页 row 页从 `ui-settings` 的 `ctx.configForms` 生成 `form: {state, mutate}`；我们只负责**渲染字段**（DSH 没有自动表单页面——`autoGenerate` 无客户端消费，`configure({auto:false})` 只翻标志）。注意 owner 传入的是 `{state, mutate}` 结构，不是 `ConfigForm` 实例（没有 `getSnapshot`）；`mutate(ops, revision)` 成功后由 owner 的 mirror 刷新 `state`。
 - 保存：`form.mutate([{path, value}], state.revision)` → config-editor 写 profile `cordis.patch.yml` → Loader 热应用。**不新建 HTTP 写接口、不建第二配置源**。
 - 降级：无 `ui-settings`（headless/旧组合）时 row 页无表单；`plugins.row.config` 组件显示只读配置 + 指向 profile patch 的说明，不报红。
@@ -287,7 +294,7 @@ interface ButlerStatus {
 
 ### 9.1 Host
 
-- `config.ts`：现有 3 字段补 `.volatile()`，新增 `liveSettleTimeoutMs`、`panelEntryEnabled`（§8.3）。
+- `config.ts`：现有 3 字段补 `.volatile()`，新增 `liveSettleTimeoutMs`、`inlineMenuEnabled`（§8.3）。
 - `service.ts`：现有 list/detail/trash/restore/purge 之外增加 `stats()`、`health()`、`tags/notes CRUD`（P1）、`exportMarkdown()`（P1，复用或自写）。
 - `trash-store.ts`：sidecar `schemaVersion`、保留期扫描、批量恢复、孤儿 sidecar 清理。
 - `bridge.ts`：现有路由不变；新增 `status` 扩展字段、`stats`、`meta`、`export`（P1）；统一错误信封。
@@ -296,7 +303,8 @@ interface ButlerStatus {
 
 ### 9.2 Client
 
-- 现有：`main` keyed 页面 + `sidebar.panellist` 入口 + locale。
+- 现有：`main` keyed 页面 + locale；**无 `sidebar.panellist` 入口**（D-023）。
+- 入口：`sidebar.workspaces.session.menu.item` 两个菜单项（id `threadloom.detail`/`threadloom.library`，order 460/470）；`ctx.layout.selectPanel` 由 `navigation.ts` 在 apply 时安装；Plugins 页 bundle 区块提供「打开会话库」按钮。
 - 新增：插件页扩展（§8.2）——`plugins.row.config` 配置表单（需 Config 字段 `.volatile()`）、`plugins.bundle.config` 状态区、`plugins.detail.badge`/`section` 健康与诊断；`sidebar.session.row.trailing` 轻量徽标（标签/子代理/大小，P2，避免与官方 hover 冲突）；`shell.overlay` 确认框（永久删除输入 id）。
 - 页面拆分：`Overview`/`Library`/`Trash`/`Settings` + `DetailDrawer`；共享 `List`/`FilterChips`/`EmptyState`。
 - 数据：桥优先，`sessions.refresh()` 在写操作后触发；本地缓存只做 UI 状态（筛选/滚动/选择）。
@@ -308,26 +316,32 @@ interface ButlerStatus {
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| D3.0 | 设计定稿 + 插件页集成（row config / bundle config / detail badge+section）+ Config volatile；status 健康快照；`liveSettleTimeoutMs`/`panelEntryEnabled` 接线 | 插件页出现「配置」入口；保存写回 profile patch 且热生效；健康红黄绿正确；无回归 |
+| D3.0 | 设计定稿 + 插件页集成（row config / bundle config / detail badge+section）+ Config volatile；status 健康快照；`liveSettleTimeoutMs`/`inlineMenuEnabled` 接线 | 插件页出现「配置」入口；保存写回 profile patch 且热生效；健康红黄绿正确；无回归 |
+| D3.0b（2026-10-29） | Codex 式入口修订：删除 `sidebar.panellist`；会话行 "..." 菜单注入详情/会话库；`ctx.layout.selectPanel` 打开 main 面板；`inlineMenuEnabled` 热增删菜单项 | 侧栏无「会话管理」按钮；两项菜单出现且可打开详情/Library；取消勾选后菜单项立即消失 |
 | D3.1 | Library（搜索/筛选/排序/分页/批量 pin+archive）+ Detail 抽屉 + 概览 | 1k 会话首屏 <300ms；批量操作逐项结果可见 |
 | D3.2 | 分叉入口（human）+ fork 边界（P1）+ Trash 完整（保留期/批量恢复/强确认）+ live 引导 | 误删=0；恢复=100%；live 阻断有文案 |
 | D3.3 | 标签/备注、内容搜索 opt-in、导出 MD、Cleanup、诊断、i18n/主题、审计 | 标签筛选可组合；导出内容正确；诊断可复制 |
 | 发布 | npm `0.2.0` + GitHub release + 市场元数据 | 安装/升级/回滚演练通过 |
 
-> **实现状态（2026-10-28 已验证）**：D3.0 已落地并通过 `pnpm run verify`（59 tests / 57 package checks）。在隔离 `DSH_HOME`（DSH 0.2.2-alpha.2）+ Playwright Chromium 实测：插件 bundle 页出现 **Healthy** 健康徽标与状态区块；行 `session-butler` 的「配置」入口可打开 5 项表单；保存 `trashRetentionDays: 45 → 60` 写回 profile `cordis.patch.yml`，且**无需重启**下 `/session-butler/api/status` 立即返回 60（volatile 配置按使用点读取）；`panelEntryEnabled` 取消勾选后侧栏「Session manager」立即消失、恢复勾选后出现；主管理页无 console/page error。
+> **实现状态（2026-10-29 已验证）**：D3.0 + D3.0b 已落地并通过 `pnpm run verify`（59 tests / 57 package checks）。在隔离 `DSH_HOME`（DSH 0.2.2-alpha.2，含真实会话数据）+ Playwright Chromium 实测：
 >
-> 证据：`docs/evidence/plugin-health-bundle.png`、`docs/evidence/plugin-row-config.png`。
+> - **入口**：侧栏没有「会话管理」按钮（导航只有 插件/自动化任务/更多）；会话行 "..." 菜单追加 **会话详情…** 与 **会话库…**（带分隔线、原生菜单样式），点击详情直接打开 Threadloom 面板并弹出该会话详情；
+> - **Library**：从行菜单与 Plugins 页「打开会话库」按钮均可打开（`ctx.layout.selectPanel`）；空会话/回收站/批量等既有能力正常；
+> - **配置**：bundle 页 **Healthy** 徽标 + 状态区块；行配置表单 5 字段（含「会话行菜单动作」）；保存 `trashRetentionDays 45 → 60` 写回 profile `cordis.patch.yml` 且 `/status` 无需重启即返回 60；`inlineMenuEnabled` 取消勾选后菜单项**实时消失**、恢复后重新出现；
+> - 全程无 console/page error。
 >
-> **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此已运行进程里的 Host 代码仍要**重启 DSH 进程**才会生效。下一阶段 D3.1 Library。
+> 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-row-config.png`、`plugin-health-bundle.png`。
+>
+> **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此 Host 代码改动仍需**重启 DSH 进程**。下一阶段 D3.1 Library（搜索/筛选/排序 + 概览）。
 
 ---
 
 ## 11. 风险与开放问题
 
-1. **row config 表单成立条件**：需 `.volatile()` + `ui-settings` 已挂载；必须在真实 0.2.2 profile 实测「配置」入口出现、保存后 profile `cordis.patch.yml` 变化且不重挂插件。未通过则降级为只读配置 + patch 说明。
+1. ~~**row config 表单成立条件**~~（2026-10-29 已验证）：`.volatile()` + `ui-settings` 组合下「配置」入口出现，保存写回 profile `cordis.patch.yml`，且值按使用点热读取；无 `ui-settings` 时降级为只读说明。
 2. **插件页 slot 稳定性**：`plugins.*` 是 0.2.2 的契约，不在 `engines.dsh` 语义内；全部用 `ctx.slots.inject` 探测（rc.2 组合无入口但主面板/命令/工具可用）。DSH 升级后需重跑审计 + 浏览器实测。
 3. **`remote.pluginInventory` 权限**：owner 页面恒放行，非 owner/liveshare 可能拒绝；只做可选增强，失败降级到自有 `status`。
-4. **没有"打开主面板"API**：`plugins.detail.actions` 无跨插件导航能力，放弃"从插件页一键打开 Threadloom"或在 README 给入口说明。
+4. ~~**没有"打开主面板"API**~~（2026-10-29 已核实）：第三方 Client 插件可 `inject: ['layout']` 并调用 `ctx.layout.selectPanel('session-butler')`；已用于行菜单与 Plugins 页「打开会话库」。
 5. **bundle.config 无 form**：配置只放 row 页，bundle 页只做状态/统计，避免两处编辑入口。
 6. **升级体验**：当前 `link:` 安装无 `updatable`；发布 npm 后需验证 remove+install 对运行中 client 半侧/主面板的影响与失败回滚文案。
 7. **写操作重复**：官方已有 pin/archive；批量操作走官方 remote 还是 Host 服务需实测失败语义与刷新。
@@ -356,4 +370,4 @@ interface ButlerStatus {
 
 ---
 
-_最后更新：2026-10-28_
+_最后更新：2026-10-29_

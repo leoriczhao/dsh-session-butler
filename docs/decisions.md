@@ -64,11 +64,12 @@
 - **决策**：Host 用 `ctx.webServer.register({kind:'prefix', path:'/session-butler/api'})`，首行 `ctx.connection.requestRejection(req)`；Client 用 document-relative `fetch('session-butler/api/…')`；JSON 限长、owner-only、稳定错误码。备选（不采用）：exact `connection.fetch` 路由（仅 `/api` 路径、owner-only，灵活性低）、通用 RPC、commands 桥。
 - **影响**：桥的契约由本项目自持并有测试；错误码表进 `shared/errors.ts`；后续若 DSH 开放第三方 Remote 再迁移。
 
-### D-009 UI 入口：keyed `main` 面板 + `sidebar.panellist` 行 · accepted
+### D-009 UI 入口：keyed `main` 面板 + `sidebar.panellist` 行 · superseded by D-023（2026-10-29）
 
 - **背景**：宿主公开契约中唯一"一键直达的整页目的地"是 `main` 槽 + 侧栏 panellist 入口（官方 Plugins 页、dshmarket 同构）。替换 `sidebar.workspaces` 会破坏既有搜索/分组/行菜单。
 - **决策**：注册 `main` 槽（`key: 'session-butler'`）作为管理页，`sidebar.panellist`（`id: 'session-butler'`）作为入口；两者同一 effect 生命周期，先 page 后 row；浮层走 `shell.overlay`。
 - **影响**：M2 实现；页面布局抄 `ui-plugin-manager`，只使用 `--dsw-alias-*` token。
+- **修订（2026-10-29）**：用户指出 ChatGPT/Codex **没有「会话管理」按钮**；同时核实 DSH 0.2.2 提供 `sidebar.workspaces.session.menu.item`（会话行 "..." 菜单）与 `sidebar.workspaces.session.row.action`（行尾 hover 按钮）两个第三方扩展点。故删除 `sidebar.panellist` 注册，改为会话行菜单内联入口（D-023）；`main` 面板保留，由 `ctx.layout.selectPanel` 打开。
 
 ### D-010 构建工具：tsc（Host）+ esbuild（Client），单文件 classic script · accepted
 
@@ -166,7 +167,19 @@
   - 升级体验依赖 registry 安装（当前 `link:` 无 `updatable`），发布 npm 后复验；
   - 破坏性动作仅人类 UI；agent 工具保持只读/创建/分叉。
 - **证据**：`research/2026-10-28-dsh-plugin-management-survey.md`（含 path:line）、`packages/client/ui-plugin-manager/src/client/slot-contract.ts:118-168`、`packages/client/ui-settings/src/client/contract/slots.ts:66`、`packages/boot/plugin-manager/src/types.ts:103-107`、`docs/d3-console-design.md` §8。
-- **实现（D3.0，2026-10-28）**：`src/config.ts` 5 字段 volatile；`src/client/plugin-page.tsx` 四个贡献；`service.health()` + `/status`；`configForms` 门控侧栏入口。真实插件页浏览器验证待发布前完成（见 D3 里程碑）。
+- **实现（D3.0，2026-10-28）**：`src/config.ts` 5 字段 volatile；`src/client/plugin-page.tsx` 四个贡献；`service.health()` + `/status`。真实插件页浏览器验证已补做（隔离 `DSH_HOME` + Playwright）：健康徽标/区块、行配置表单、volatile 配置热生效、`inlineMenuEnabled` 热增删会话行菜单项均通过；证据 `docs/evidence/plugin-health-bundle.png`、`plugin-row-config.png`、`inline-session-menu.png`。
+
+### D-023 Codex 式入口：不设独立「会话管理」按钮，动作内联到会话行 "..." 菜单 · accepted（用户 2026-10-29 纠正）
+
+- **背景**：用户指出 ChatGPT/Codex 根本没有「会话管理」按钮；D-009 的侧栏入口属于错误的界面形态（Codex 的会话管理内联在侧栏会话行：hover pin/archive、"..." 菜单、搜索/筛选）。同时核实 DSH 0.2.2 的 `sidebar.workspaces.session.menu.item` 允许多插件按 `order` 插入行菜单项，`sidebar.workspaces.session.row.action` 允许行尾 hover 按钮；`ctx.layout.selectPanel(id)` 可从任意客户端插件切换 `main` 面板。
+- **决策**：
+  - **删除** `sidebar.panellist` 注册（不再有侧栏「会话管理」按钮）；
+  - 会话行 "..." 菜单追加两项：`会话详情…`（order 460，打开该会话详情）与 `会话库…`（order 470，打开完整 Library/Trash）；
+  - 完整 Library 仍注册为 `main` 面板，但只通过行菜单或 Plugins 页 bundle 区块的「打开会话库」按钮进入（`ctx.layout.selectPanel`），不做常驻导航；
+  - `panelEntryEnabled` 配置字段替换为 `inlineMenuEnabled`（默认 true），关闭后热移除两行菜单项；
+  - 菜单项样式复制 `ui-primitives` Menu.module.css 的 cell 视觉契约（第三方面板无法 import 宿主组件），保持原生菜单观感。
+- **证据**：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-row-config.png`；浏览器实测（隔离 `DSH_HOME` + Playwright）：侧栏无「会话管理」按钮、两项菜单出现、详情面板打开、Library 从菜单/插件页打开、`inlineMenuEnabled` 取消勾选后菜单项立即消失并恢复。
+- **影响**：D-009 的 `sidebar.panellist` 部分作废；`main` 面板、locale、桥、命令、工具均不变。
 
 ## 待确认问题（发布前必须收敛）
 
