@@ -6,6 +6,8 @@
 >
 > 观察时间：2026-10-28 17:55–18:05（Asia/Shanghai）。用户账号与工作区为真实数据，本文只记录控件与交互，不采集私人内容。
 
+> ⚠️ **补遗（2026-10-29）**：本文 §1 把 Settings 列为「未观察」，但没有把它当作阻塞缺口——用户随后指出归档会话在 **设置 → 已归档的聊天**（`docs/evidence/chatgpt-archived-chats-settings.png`），并且产品里没有「会话库」页面。本文 §0.12 的「Library 核心」结论已被 `docs/decisions.md` D-029 取代；调研缺口与修正流程见 `research/2026-10-29-research-corrections.md`。
+
 ---
 
 ## 0. TL;DR（12 条）

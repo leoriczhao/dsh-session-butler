@@ -158,12 +158,14 @@ async function dispatch(service: SessionButlerService, method: BridgeMethod, bod
       const query = optionalStringField(body, 'query')
       const cwd = optionalStringField(body, 'cwd')
       const includeArchived = optionalBooleanField(body, 'includeArchived')
+      const archivedOnly = optionalBooleanField(body, 'archivedOnly')
       const includeSubagents = optionalBooleanField(body, 'includeSubagents')
       const limit = optionalNumberField(body, 'limit')
       return service.listSessions({
         ...(query === undefined ? {} : { query }),
         ...(cwd === undefined ? {} : { cwd }),
         ...(includeArchived === undefined ? {} : { includeArchived }),
+        ...(archivedOnly === undefined ? {} : { archivedOnly }),
         ...(includeSubagents === undefined ? {} : { includeSubagents }),
         ...(limit === undefined ? {} : { limit }),
       })

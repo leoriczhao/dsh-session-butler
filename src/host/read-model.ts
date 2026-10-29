@@ -95,6 +95,8 @@ export interface SessionListFilters {
   readonly cwd?: string
   /** Include archived sessions (default false). */
   readonly includeArchived?: boolean
+  /** Keep only archived sessions (settings → Archived chats). */
+  readonly archivedOnly?: boolean
   /** Include subagent sessions (default true). */
   readonly includeSubagents?: boolean
   /** Rows to return, 1-100 (default 25). */

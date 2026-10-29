@@ -264,10 +264,13 @@ export interface ClientContextLike {
     inject(name: string, callback: () => (() => void) | void): () => void
     register(options: SlotRegistrationLike, component: (props: never) => unknown): () => void
   }
-  readonly uiWorkspace: { openSession(sessionId: string): void }
+  readonly uiWorkspace: {
+    openSession(sessionId: string): void
+    /** Official archive/unarchive commands; absent in test doubles. */
+    archiveSession?(sessionId: string): Promise<void>
+    unarchiveSession?(sessionId: string): Promise<void>
+  }
   readonly sessions?: { refresh(): Promise<void> }
-  /** Layout navigation service: select a registered `main` panel (or null for the Conversation). */
-  readonly layout?: { selectPanel(panelId: string | null): void }
   /** Cordis service lookup; used for optional services like `configForms`. */
   get?(name: string): unknown
   effect(execute: () => (() => void) | void, label?: string): unknown

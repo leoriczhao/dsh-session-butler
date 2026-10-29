@@ -505,12 +505,14 @@ export class SessionButlerService {
     const query = filters.query?.trim().toLowerCase()
     const cwdFilter = filters.cwd?.trim().toLowerCase()
     const includeArchived = filters.includeArchived === true
+    const archivedOnly = filters.archivedOnly === true
     const includeSubagents = filters.includeSubagents !== false
     const rows = [...byId.values()].filter((row) => {
       const { header } = row
       const subagent = header.origin === 'subagent'
       if (subagent && !includeSubagents) return false
-      if (!includeArchived && archived.has(header.id)) return false
+      if (archivedOnly && !archived.has(header.id)) return false
+      if (!includeArchived && !archivedOnly && archived.has(header.id)) return false
       if (cwdFilter !== undefined && (header.cwd ?? '').toLowerCase().startsWith(cwdFilter) === false) return false
       if (query !== undefined) {
         const haystack = `${header.id}\n${header.cwd ?? ''}`.toLowerCase()

@@ -332,6 +332,10 @@ test('listSessions pages newest-first, joins live rows, titles, archive and pin 
     assert.equal(withArchived.total, 5)
     assert.equal(withArchived.sessions.find(entry => entry.id === 'session-archived').archived, true)
 
+    const archivedOnly = await service.listSessions({ archivedOnly: true })
+    assert.equal(archivedOnly.total, 1)
+    assert.deepEqual(archivedOnly.sessions.map(entry => entry.id), ['session-archived'])
+
     const withoutSubagents = await service.listSessions({ includeSubagents: false })
     assert.equal(withoutSubagents.total, 3)
 

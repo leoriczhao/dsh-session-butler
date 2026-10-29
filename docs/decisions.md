@@ -156,6 +156,7 @@
 - **背景**：用户要求 D3「要做就做完整」，并质疑「删除/回收站是否该作为下一版核心」。Codex 桌面 UI 实机显示：删除位于右键菜单最底部、无快捷键、无回收站；行内主生命周期动作是归档（可恢复，Ctrl+Shift+A）。
 - **决策**：D3 的核心能力 = Library（检索/分组/预览）+ Detail（血缘/成本/产物）+ Resume（打开/续聊）+ Fork（工具/面板）+ Organize（置顶/归档/标签/备注）；删除/回收站作为 **Cleanup** 模块（默认 `permanentDelete=disabled`），成功指标是「误删=0、可恢复=100%、live 误删=0」，而不是删除量。
 - **证据**：`research/2026-10-28-codex-desktop-ui-audit.md` §3/§9；`research/codex-session-management.md` §E；`docs/decisions.md` D-003/D-005/D-013。
+- **2026-10-29 二次纠正（D-029 取代本决策的入口与 Library 核心）**：用户明确「ChatGPT/Codex 没有会话库这个 feature」；管理入口改为设置页（已归档的聊天 / 回收站 / 配置），Library 面板不再实现。D-021 的「完整管理台」方向作废，保留 Cleanup（回收站/永久删除）作为安全网。
 
 ### D-022 插件管理集成：复用侧栏 Plugins 页 + `plugins.*` 扩展点 + 运行期健康，不重做插件管理 · accepted（用户 2026-10-28 确认）
 
@@ -169,6 +170,7 @@
   - 破坏性动作仅人类 UI；agent 工具保持只读/创建/分叉。
 - **证据**：`research/2026-10-28-dsh-plugin-management-survey.md`（含 path:line）、`packages/client/ui-plugin-manager/src/client/slot-contract.ts:118-168`、`packages/client/ui-settings/src/client/contract/slots.ts:66`、`packages/boot/plugin-manager/src/types.ts:103-107`、`docs/d3-console-design.md` §8。
 - **实现（D3.0，2026-10-28）**：`src/config.ts` 5 字段 volatile；`src/client/plugin-page.tsx` 四个贡献；`service.health()` + `/status`。真实插件页浏览器验证已补做（隔离 `DSH_HOME` + Playwright）：健康徽标/区块、行配置表单、volatile 配置热生效、`inlineMenuEnabled` 热增删会话行菜单项均通过；证据 `docs/evidence/plugin-health-bundle.png`、`plugin-row-config.png`、`inline-session-menu.png`。
+- **2026-10-29 二次纠正（D-029 取代插件页配置）**：配置迁到设置页 `settings.section`；删除 `plugins.row.config` / `plugins.bundle.config` / `plugins.detail.actions`，插件页只保留健康/诊断。
 
 ### D-023 Codex 式入口：不设独立「会话管理」按钮，动作内联到会话行 "..." 菜单 · accepted（用户 2026-10-29 纠正）
 
@@ -181,6 +183,7 @@
   - 菜单项样式复制 `ui-primitives` Menu.module.css 的 cell 视觉契约（第三方面板无法 import 宿主组件），保持原生菜单观感。
 - **证据**：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-row-config.png`；浏览器实测（隔离 `DSH_HOME` + Playwright）：侧栏无「会话管理」按钮、两项菜单出现、详情面板打开、Library 从菜单/插件页打开、`inlineMenuEnabled` 取消勾选后菜单项立即消失并恢复。
 - **影响**：D-009 的 `sidebar.panellist` 部分作废；`main` 面板、locale、桥、命令、工具均不变。
+- **2026-10-29 二次纠正（D-029 取代）**：用户指出没有「会话库」这个 feature；`main` 面板、`ctx.layout.selectPanel`、`会话详情…`/`会话库…` 两项行菜单与 Plugins 页「打开会话库」按钮全部删除。行菜单只保留一项「移入回收站…」。
 
 ### D-024 配置入口可见性：bundle 页标题旁「配置」按钮 + 对话框，row 页保留 · accepted（用户 2026-10-29 反馈）
 
@@ -192,6 +195,7 @@
   - 兼容未重启的旧 Host：读取时 `inlineMenuEnabled` 缺失则回退旧字段 `panelEntryEnabled`，保存时自动映射到旧路径，重启后自动改回新字段。
 - **证据**：`docs/evidence/plugin-configure-entry.png`（标题旁「配置」按钮）、`plugin-configure-dialog.png`（对话框 5 字段）；隔离 `DSH_HOME` + Playwright 实测：按钮可见、对话框打开、保存 `trashRetentionDays` 写回 `cordis.patch.yml`、无 console/page error。
 - **影响**：修正 D-022「配置只经 row 页」的入口设计；`plugins.row.config` 与原生 DSH 配置页不变。
+- **2026-10-29 二次纠正（D-029 取代）**：用户指出「当前的插件配置的位置不对，应该也放在设置里面」；bundle 页「配置」按钮与对话框、row 配置页均删除，配置改为 DSH 设置对话框内的 `Threadloom` 分区（`settings.section`）。
 
 ### D-025 工具注册晚绑定：创建类工具随 `sessionController` 挂载再注册 · fixed（2026-10-29 实测发现）
 
@@ -215,6 +219,23 @@
 - **live 复验（2026-10-29 17:28 重启后，PID 199786）**：`session_butler_new` → `session-284e19d0…`，`session_butler_fork` → `session-e3487de9…`；两者都写入 `~/.dsh/storages/workspace.json` 的 `dsh-session-butler`（`6d923fab…`）`sessionIds`。侧栏 `新会话` 行即该 blank（`data-row-key=session:session-284e19d0…`，`aria-selected=true`），点「新会话」`dsh.sessions.current` 直接复用该 id、composer 可用；fork 行出现在同组侧栏，点击后 `dsh.sessions.current` 切到 fork、带完整 17 轮历史且 composer 可用。截图 `docs/evidence/live-tool-create-reuse.png`、`live-tool-fork-open.png`。
 - **测试**：`tests/m3-tools.test.mjs` 新增「resolveWorkspace 时传 workspaceId」；`tests/m1-apply.test.mjs` 新增 apply 接线用例；60 → 62 tests 全绿。
 - **影响**：Web 组合需重启 DSH 进程加载 Host 修复（已重启并复验）；工具创建的空白会话由「点新会话」复用即可开始对话，fork 直接出现在侧栏并可续聊。
+
+### D-029 会话管理入口全部收进设置页（Codex 模式）：无会话库、无侧栏按钮、配置进设置 · accepted（用户 2026-10-29 二次纠正）
+
+- **背景**：用户第二次纠正界面形态，要点：① 以 Codex 模式为准；② ChatGPT/Codex **没有「会话库」这个 feature**；③ ChatGPT app 的归档会话在 **设置 → 已归档的聊天**（`docs/evidence/chatgpt-archived-chats-settings.png`）；④ 插件配置位置不对，应放进**设置**（`docs/evidence/dsh-settings-dialog.png`；DSH 设置对话框允许第三方插件用 `settings.section` 注入分区，Claude Style / Dream 记忆即如此）。
+- **决策**：
+  - **删除会话库**：不再注册 `main` 面板、不再用 `ctx.layout.selectPanel` 导航、不注册行菜单 `threadloom.detail`/`threadloom.library`、不注册 Plugins 页「打开会话库」；`src/client/page.tsx`、`src/client/navigation.ts` 删除。
+  - **设置页三个分区**（`settings.section`）：`archived-sessions`（已归档的聊天：搜索、按项目分组、取消归档、删除、全部删除，order 44）、`threadloom-trash`（回收站：恢复、永久删除，order 45）、`threadloom`（Threadloom 配置：原 5 字段，order 46）。
+  - **行菜单一项**：`sidebar.workspaces.session.menu.item` 只保留「移入回收站…」（id `threadloom.trash`，order 470）；点击先 `window.confirm`，再走 Host bridge `trash`，成功后刷新会话列表；`inlineMenuEnabled` 继续控制该项。
+  - **配置入口单一化**：删除 `plugins.row.config` / `plugins.bundle.config` / `plugins.detail.actions`，插件页只保留 `plugins.detail.badge|section`（健康/诊断）。
+  - **数据与安全**：已归档列表用 bridge `list`（`includeArchived: true`）过滤 `archived`；取消归档用官方 `ctx.uiWorkspace.unarchiveSession`（侧栏由官方 store 更新）；删除走 bridge `trash`/`trash-many`，进入回收站并保留保留期安全网；永久删除仍受 `permanentDelete` 配置与「输入 id」双重约束。
+- **证据**：用户截图 `docs/evidence/chatgpt-archived-chats-settings.png`、`docs/evidence/dsh-settings-dialog.png`；DSH 设置槽契约 `packages/client/ui-settings/src/client/contract/slots.ts:57`（`settings.section`，root/list），第三方实例 `dsh-dream` 的 `ctx.slots.inject('settings.section', …)`；62 tests 全绿（客户端 6 个注册/渲染断言重写）。
+- **影响**：D-021 的 Library 核心、D-022 的插件页配置、D-023 的两项行菜单、D-024 的配置按钮均被取代；删除路径变为「官方归档 → 设置 → 已归档的聊天 → 删除」或行菜单直接「移入回收站」；工具面不变（D-015，仍只 list/detail/new/fork）。
+- **live 验证（2026-10-29 18:09，无需重启 Host：只改 Client 半，页面刷新即加载新 `lib/client.js`）**：
+  - 设置对话框左栏出现 **Archived chats / Trash / Threadloom** 三个分区（`docs/evidence/live-settings-nav.png`）；Archived chats 显示 7 条（`/home/leoric/code/deepseek-harness` 5 条、`/home/leoric/code/jimuTensor` 2 条），行内 Unarchive/Delete + 右上 Delete all（`live-settings-archived-chats.png`）；Trash 显示 2 条 + 保留期与永久删除禁用提示（`live-settings-trash.png`）；Threadloom 显示 5 个字段（`live-settings-threadloom.png`）。
+  - 会话行 "..." 菜单只剩官方项 + **Move to trash…**（无会话详情/会话库），`live-row-menu.png`。
+  - 已归档列表在旧 Host 上首次加载约 7s（`list` includeArchived 会对 100 行读标题）；新增 Host `archivedOnly` 过滤后只读归档行，**需重启 DSH 加载 Host 半**，重启后该项变快。未重启时 Client 仍工作：旧 Host 忽略未知字段，返回全量后由客户端过滤。
+  - 未在 live 执行写操作（取消归档/删除）以避免改动用户数据；写入路径由 Host 服务测试与客户端单测覆盖。
 
 ## 待确认问题（发布前必须收敛）
 

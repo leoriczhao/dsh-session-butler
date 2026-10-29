@@ -6,6 +6,23 @@
 >
 > **v0.2 修订（2026-10-29，用户纠正）**：ChatGPT/Codex **没有「会话管理」按钮**——会话管理内联在侧栏会话行（hover pin/archive、"..." 菜单、搜索/筛选）。据此删除侧栏 `sidebar.panellist` 入口，改为会话行 "..." 菜单两个动作（`会话详情…` / `会话库…`），完整 Library 通过 `ctx.layout.selectPanel` 从菜单或 Plugins 页打开。决策见 D-023（D-009 相应作废）。
 
+> **v0.3 当前实现（2026-10-29，D-029，以此为准）** —— 用户第二次纠正后，产品形态改为「设置页管理」：
+>
+> 1. **不再有会话库/Library、main 面板、会话详情弹窗、侧栏按钮**；用户明确「没有会话库这个 feature」。本文下面 §0–§12 是 v0.1/v0.2 历史设计，仅作研究记录，**不代表当前实现**。
+> 2. **三个设置分区**（DSH 设置对话框，settings.section）：已归档的聊天（id archived-sessions，order 44；搜索/按项目分组/取消归档/删除/全部删除）、回收站（id threadloom-trash，order 45；恢复/永久删除）、Threadloom 配置（id threadloom，order 46；原 5 字段）。
+> 3. **会话行 "..." 菜单只剩一项**「移入回收站…」（id threadloom.trash，order 470；window.confirm 后走 bridge trash，再刷新会话列表；inlineMenuEnabled 可关）。
+> 4. **插件页只保留健康/诊断**（plugins.detail.badge / plugins.detail.section）；plugins.row.config / bundle.config / detail.actions 全部删除，配置只在设置里出现。
+> 5. **删除仍是安全网**：已归档列表的删除/全部删除、行菜单删除都进入回收站；永久删除需 permanentDelete=confirm + 输入完整 id；已归档列表的取消归档调用官方 uiWorkspace.unarchiveSession。
+> 6. **数据来源不变**：bridge list（includeArchived: true）过滤 archived；trash/trash-many（≤50/批）/list-trash/restore/purge/status；无新增 Host API。
+> 7. **参考证据**：docs/evidence/chatgpt-archived-chats-settings.png（ChatGPT 设置 → 已归档的聊天）、docs/evidence/dsh-settings-dialog.png（DSH 设置对话框）；settings.section 契约见 packages/client/ui-settings/src/client/contract/slots.ts:57，第三方实例见 dsh-dream 的 ctx.slots.inject('settings.section'）。
+> 8. **状态**：代码已改（settings.tsx / menu.tsx / index.tsx；删除 page.tsx / navigation.ts），62 tests 全绿；**live 3080 已用 Playwright 验证**（2026-10-29 18:09，Client 半页面刷新即热加载）：设置左栏 Archived chats / Trash / Threadloom 三分区、已归档 7 条按项目分组、Trash 2 条、配置 5 字段、行菜单只剩官方项 + Move to trash…。证据 `docs/evidence/live-settings-nav.png`、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live-settings-threadloom.png`、`live-row-menu.png`。
+>
+> 当前完整设计摘要、对齐矩阵与验证清单见 README「能力」表、docs/decisions.md D-029、research/2026-10-29-research-corrections.md；本文 §3 的 IA、§4 的 Library、§8 的插件页配置、§10 的 D3.1 Library 均已作废。
+
+---
+
+
+
 ---
 
 ## 0. 结论先行
@@ -336,7 +353,9 @@ interface ButlerStatus {
 >
 > 证据：`docs/evidence/inline-session-menu.png`、`inline-detail-panel.png`、`plugin-configure-entry.png`、`plugin-configure-dialog.png`、`plugin-row-config.png`、`plugin-health-bundle.png`、`tool-created-hello.png`、`live-tool-create-reuse.png`、`live-tool-fork-open.png`、`live-new-session-summary.png`。
 >
-> **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**（core 未组合 host HMR）；因此 Host 代码改动仍需**重启 DSH 进程**。下一阶段 D3.1 Library（搜索/筛选/排序 + 概览）。
+> **v0.3 live 验证（2026-10-29 18:09）**：上述 2026-10-29 上午的入口（会话详情…/会话库…、bundle 页配置按钮）已被 D-029 取代。当前 live 实机（Playwright 连 3080，Client 半页面刷新热加载）：设置对话框左栏出现 **Archived chats / Trash / Threadloom**；Archived chats 7 条按项目分组 + Unarchive/Delete/Delete all；Trash 2 条 + 保留期/永久删除禁用提示；Threadloom 5 字段；会话行菜单只剩官方项 + **Move to trash…**。证据：`docs/evidence/live-settings-nav.png`、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live-settings-threadloom.png`、`live-row-menu.png`。
+>
+> **注意**：DSH 当前的 bundle 热切换只重组合 Client graph，**不会重新 import Host 模块**；仍需要重启 DSH 进程来加载 Host 的 `archivedOnly` 过滤（未重启时已归档页首次加载约 7s，客户端回退过滤）。下一阶段是设置页完善（D3.1），不再是 Library。
 
 ---
 

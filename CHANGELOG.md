@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-10-29
+
+### Changed — D-029：会话管理入口全部收进设置页（Codex 模式）
+
+- **删除会话库**：移除 main 面板、ctx.layout.selectPanel 导航、行菜单「会话详情…」/「会话库…」、Plugins 页「打开会话库」按钮；删除 src/client/page.tsx、src/client/navigation.ts（约 900 行 UI 代码退出运行路径）。用户明确「没有会话库这个 feature」。
+- **新增三个设置分区**（settings.section，DSH 设置对话框左栏）：
+  - **已归档的聊天**（archived-sessions，order 44）：搜索、按项目分组、取消归档、删除、全部删除；取消归档走官方 uiWorkspace.unarchiveSession，删除进入回收站（trash/trash-many，≤50/批）。
+  - **回收站**（threadloom-trash，order 45）：恢复、永久删除（需 permanentDelete: confirm + 输入完整 session id）。
+  - **Threadloom**（threadloom，order 46）：原 5 个 volatile 配置字段，经 configForms 保存。
+- **行菜单收窄**：sidebar.workspaces.session.menu.item 只保留「移入回收站…」（threadloom.trash，order 470）；window.confirm 后走 bridge，成功后刷新会话列表；inlineMenuEnabled 继续控制显隐。
+- **插件页收窄**：删除 plugins.row.config / plugins.bundle.config / plugins.detail.actions；只保留 plugins.detail.badge（健康徽标）与 plugins.detail.section（诊断区块）。
+- **配置入口单一化**：配置只在 **设置 → Threadloom** 出现，不再有 bundle 页「配置」按钮/对话框或 row 配置页入口。
+- **兼容**：未重启的旧 Host 仍可读；inlineMenuEnabled 缺失时回退旧字段 panelEntryEnabled（保存时映射回旧路径）。工具面不变（list/detail/new/fork；删除仍不进工具面，D-003/D-015）。
+- **文档/证据**：新增 research/tool-face-parity.md（Codex codex_app 线程工具面补遗）、research/2026-10-29-research-corrections.md（调研修正记录）；docs/evidence/chatgpt-archived-chats-settings.png、dsh-settings-dialog.png；docs/decisions.md 新增 D-029，D-021/D-022/D-023/D-024 标注被取代。
+- **性能/兼容**：桥 `list` 增加 `archivedOnly` 过滤（设置页只读归档行，避免为 100 行读标题的 ~7s 延迟）；旧 Host 忽略该字段仍可工作（客户端过滤），重启后生效。
+- **live 验证（2026-10-29 18:09，live 3080，Client 半热加载）**：设置左栏出现 Archived chats/Trash/Threadloom；已归档 7 条按项目分组、Trash 2 条、配置 5 字段；行菜单只剩官方项 + Move to trash…。证据：`docs/evidence/live-settings-nav.png`、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live-settings-threadloom.png`、`live-row-menu.png`。
+- **测试**：客户端测试重写为 6 个用例（注册表/延迟绑定/释放顺序/设置页 SSR/行菜单开关），npm run verify 62 tests + 57 package checks + 75 files tarball 全绿。
+
 ## [Unreleased]
 
 ### Added — D3.0: 与 DSH 插件管理集成 + 功能级健康快照 (2026-10-28)

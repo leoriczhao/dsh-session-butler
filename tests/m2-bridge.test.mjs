@@ -192,13 +192,13 @@ test('list forwards filters and returns the page envelope', async () => {
   mountBridge(host, service)
   const response = await call(routes[0], fakeRequest({
     url: '/session-butler/api/list',
-    body: { query: ' release ', includeArchived: true, limit: 10 },
+    body: { query: ' release ', includeArchived: true, archivedOnly: true, limit: 10 },
   }))
   assert.equal(response.statusCode, 200)
   const payload = JSON.parse(response.body)
   assert.equal(payload.ok, true)
   assert.equal(payload.value.total, 1)
-  assert.deepEqual(service.calls, [['list', { query: 'release', includeArchived: true, limit: 10 }]])
+  assert.deepEqual(service.calls, [['list', { query: 'release', includeArchived: true, archivedOnly: true, limit: 10 }]])
 
   const invalid = await call(routes[0], fakeRequest({ url: '/session-butler/api/list', body: { limit: 'ten' } }))
   assert.equal(invalid.statusCode, 400)
