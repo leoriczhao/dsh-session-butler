@@ -94,6 +94,7 @@
   - 授权语义收敛为「**只操作调用方自己的会话**」：fork 的 source 固定为 `exec.agent.session.id`，new 不接受 cwd/workspace/目标 id 参数；模型不能借此操作任意会话或任意路径。
   - 能力按组合探测：只有存在 `sessionController` 时才注册这两个工具（Web profile 有；headless/ACP 可能没有），两个方法分别探测；`tools` 服务缺失时全部工具不注册。
   - 删除/回收站/恢复仍是破坏性写操作，继续不进入工具面（D-003 不变）。
+- **2026-10-29 对标修正**：此前「Codex 不把会话管理交给模型」是只看了 CLI/TUI/app-server 三通路的错误结论。实测 Codex 桌面 app 经 `codex_app` MCP 向模型暴露 `create_thread` / `fork_thread` / `list_threads` / `list_archived_threads` / `read_thread` / `wait_threads` / `send_message_to_thread` / `handoff_thread` / `set_thread_archived` / `set_thread_title` 等线程工具（另有侧栏分区、worktree、automation），模型可在会话里直接新建 session；Codex 同样**不暴露 delete 工具**。证据见 [`research/tool-face-parity.md`](../research/tool-face-parity.md)。因此 D-015 的「只做创建 + 只读」是比 Codex 更保守的产品选择，不是与 Codex 对齐的结论；若追求对齐，候选补 `set_thread_title` / `set_thread_archived` / `list_archived_threads`（DSH Host 已有能力），`wait_threads` / `send_message_to_thread` / `handoff_thread` 受 DSH 能力限制。
 
 ### D-014 会话内「派生/旁支」的剩余缺口，列为二期候选 · proposed
 

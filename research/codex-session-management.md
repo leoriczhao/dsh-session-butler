@@ -3,6 +3,8 @@
 > 目的：为我们自己要做 DSH 会话管理插件，整理 Codex（OpenAI Codex CLI / 桌面端 / 云端）在"会话管理"上的**用例、功能面与设计决策**。
 > 来源：官方文档（learn.chatgpt.com，`.md` 版本）、Codex CLI 0.146.0 changelog、app-server 协议文档、GitHub issues、社区第三方工具。文末有链接。
 
+> ⚠️ **补遗（2026-10-29）**：本文 §3 的三条通路矩阵只覆盖 CLI/TUI/app-server（人/API 面），**没有覆盖 Codex 桌面 app 的模型工具面（T 面）**。实测 Codex 模型可通过 `codex_app` MCP 调用 `create_thread` / `fork_thread` / `list_threads` / `read_thread` / `wait_threads` / `send_message_to_thread` / `handoff_thread` / `set_thread_archived` / `set_thread_title` 等线程工具，并可在会话中直接让模型新建 session。证据、语义与 Threadloom 对标见 [`research/tool-face-parity.md`](./tool-face-parity.md)。
+
 ---
 
 ## 0. TL;DR
