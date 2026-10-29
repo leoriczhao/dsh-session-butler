@@ -32,7 +32,7 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2` + D3 改动待 `npm publish`（需 2FA） |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）以及 D3.0/3.0b 改动已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有 10 个提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 59 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）以及 D3.0/3.0b 改动已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 60 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 还差什么（D3 路线图）
 
@@ -40,7 +40,7 @@ D3 目标是「完整管理台」，当前完成 D3.0 + D3.0b；以下是已设�
 
 | 阶段 | 缺口 |
 |---|---|
-| 发布 | `0.1.1`/`0.1.2` + D3 改动尚未 `npm publish`（2FA）；10 个本地提交未 push |
+| 发布 | `0.1.1`/`0.1.2` + D3 改动尚未 `npm publish`（2FA）；本地提交未 push |
 | D3.1 Library | 排序控件（当前固定 pin + 最近活动）、分页（当前本地最多 300 行）、概览统计页、详情抽屉（当前是弹窗）、Library 内「新建会话」、批量置顶/归档（当前批量仅删除/恢复） |
 | D3.2 组织与生命周期 | 面板内分叉入口（当前用官方 UI 或 agent tool）、分叉边界选择、Trash 保留期清理引导/审计、live 会话引导文案打磨 |
 | D3.3 增强 | 标签/备注（P1）、内容级搜索（opt-in `session-query`）、导出 Markdown、Cleanup 清理页、独立诊断页、命令面板/快捷键、hover 预览、过滤保存 |

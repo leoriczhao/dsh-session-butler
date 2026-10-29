@@ -35,9 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **旧 Host 兼容**：读取时 `inlineMenuEnabled` 缺失则回退旧字段 `panelEntryEnabled`，保存自动映射旧路径；重启后恢复新字段。
 - **真实浏览器验收**（隔离 `DSH_HOME` + Playwright）：bundle 页标题旁「配置」按钮可见；对话框 5 字段；保存 `trashRetentionDays` → 40 写回 `cordis.patch.yml`；关闭对话框；无 console/page error。证据：`docs/evidence/plugin-configure-entry.png`、`plugin-configure-dialog.png`。
 
+### Fixed — 创建类工具在 Web 组合中漏注册（D-025，2026-10-29）
+
+- **现象**：真实 Web 会话中只有 `session_butler_list` / `session_butler_detail`；`session_butler_new` / `session_butler_fork` 为 `undefined`。原因是创建能力在 `inject(['tools'])` 时一次性探测，而 Web 的 `sessionController` 晚于 bundle 行挂载。
+- **修复**：区分 `registerReadTools` 与 `registerCreationTools`；读工具在 `['tools']` 注入时注册，创建工具在 `['tools','sessionController']` 两者都可用时注册；控制器缺失的组合仍不暴露 new/fork。
+- **测试**：`tests/m1-apply.test.mjs` 新增晚绑定用例（控制器延迟出现后注册 new/fork）；59 → 60 tests 全绿。
+- **注意**：修复需要重启 DSH 进程才会出现在现有 Web 会话中。
+
 ### Docs
 
-- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023（用户纠正入口形态）、D-024（配置入口可见性）新增；`docs/usage.md` 重写入口与配置说明。
+- `docs/d3-console-design.md` D3 设计定稿 + v0.2 入口修订；`docs/decisions.md` D-021/D-022 accepted、D-023（用户纠正入口形态）、D-024（配置入口可见性）、D-025（创建工具晚绑定）新增；`docs/usage.md` 重写入口与配置说明。
 
 ## [0.1.2] - 2026-10-28
 

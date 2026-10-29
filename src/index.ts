@@ -32,7 +32,7 @@ import type {
   WorkspaceRegistryPort,
 } from './host/ports.js'
 import { SessionButlerService } from './host/service.js'
-import { registerButlerTools } from './host/tools.js'
+import { registerButlerTools, registerCreationTools, registerReadTools } from './host/tools.js'
 import { API_PREFIX, PANEL_ID, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
 import { PLUGIN_VERSION } from './host/version.js'
 
@@ -127,10 +127,17 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     host.inject(['tools'], (scope) => {
       const tools = scope.get<ToolsPort>('tools')
       if (tools === undefined) return
-      scope.effect(
-        () => registerButlerTools(tools, service, sessionToolCapabilities(scope)),
-        'session-butler: tools',
-      )
+      scope.effect(() => registerReadTools(tools, service), 'session-butler: read tools')
+    })
+    // The Web profile mounts `sessionController` after the bundle rows, so a
+    // one-shot capability probe at tools-mount time misses it (D-026). Bind the
+    // creation tools when both services are actually present.
+    host.inject(['tools', 'sessionController'], (scope) => {
+      const tools = scope.get<ToolsPort>('tools')
+      if (tools === undefined) return
+      const capabilities = sessionToolCapabilities(scope)
+      if (capabilities.create === undefined && capabilities.fork === undefined) return
+      scope.effect(() => registerCreationTools(tools, capabilities), 'session-butler: creation tools')
     })
   } else {
     mountBridge(host, service)

@@ -563,8 +563,49 @@ function optionalEventSeq(args: Record<string, unknown>): number | undefined {
   return value
 }
 
+/** Dispose a group of registrations without masking a failing sibling. */
+function disposeAll(disposers: readonly (() => void)[]): () => void {
+  return () => {
+    for (const dispose of disposers) {
+      try {
+        dispose()
+      } catch {
+        // Registration disposal is best-effort and must not mask the other ones.
+      }
+    }
+  }
+}
+
 /**
- * Register the Host tools.
+ * Register the always-available read tools.
+ *
+ * Kept separate from the creation tools so a Host composition can bind them at
+ * different times: `tools` exists long before the Web profile mounts
+ * `sessionController` (D-026).
+ */
+export function registerReadTools(tools: ToolsPort, read: ButlerReadModel): () => void {
+  return disposeAll([createListTool(read), createDetailTool(read)].map(definition => tools.register(definition)))
+}
+
+/**
+ * Register the creation tools when a session controller is available.
+ *
+ * @param capabilities - whatever `sessionController` supports; an empty object
+ *   registers nothing and returns a no-op disposer.
+ */
+export function registerCreationTools(
+  tools: ToolsPort,
+  capabilities: ButlerToolCapabilities = {},
+): () => void {
+  const definitions = []
+  if (capabilities.create !== undefined) definitions.push(createNewSessionTool(capabilities.create))
+  if (capabilities.fork !== undefined) definitions.push(createForkSessionTool(capabilities.fork))
+  return disposeAll(definitions.map(definition => tools.register(definition)))
+}
+
+/**
+ * Register every Host tool that the current composition supports.
+ *
  * @param tools - Host tool registry.
  * @param read - Host read model (the service in production, a fake in tests).
  * @param capabilities - optional `sessionController` creation/fork capabilities;
@@ -576,17 +617,5 @@ export function registerButlerTools(
   read: ButlerReadModel,
   capabilities: ButlerToolCapabilities = {},
 ): () => void {
-  const definitions = [createListTool(read), createDetailTool(read)]
-  if (capabilities.create !== undefined) definitions.push(createNewSessionTool(capabilities.create))
-  if (capabilities.fork !== undefined) definitions.push(createForkSessionTool(capabilities.fork))
-  const disposers = definitions.map(definition => tools.register(definition))
-  return () => {
-    for (const dispose of disposers) {
-      try {
-        dispose()
-      } catch {
-        // Registration disposal is best-effort and must not mask the other ones.
-      }
-    }
-  }
+  return disposeAll([registerReadTools(tools, read), registerCreationTools(tools, capabilities)])
 }

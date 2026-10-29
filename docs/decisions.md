@@ -192,6 +192,16 @@
 - **证据**：`docs/evidence/plugin-configure-entry.png`（标题旁「配置」按钮）、`plugin-configure-dialog.png`（对话框 5 字段）；隔离 `DSH_HOME` + Playwright 实测：按钮可见、对话框打开、保存 `trashRetentionDays` 写回 `cordis.patch.yml`、无 console/page error。
 - **影响**：修正 D-022「配置只经 row 页」的入口设计；`plugins.row.config` 与原生 DSH 配置页不变。
 
+### D-025 工具注册晚绑定：创建类工具随 `sessionController` 挂载再注册 · fixed（2026-10-29 实测发现）
+
+- **背景**：在真实 Web 会话里探测工具注册，只有 `session_butler_list` / `session_butler_detail`；`session_butler_new` / `session_butler_fork` 为 `undefined`。原因是 `apply` 在 `host.inject(['tools'])` 回调里一次性调用 `sessionToolCapabilities(scope)`，而 Web 组合的 `sessionController` 在 bundle 行之后才挂载，此时探测得到 `undefined`，创建工具被永久漏注册。
+- **决策**：
+  - 拆分注册：`registerReadTools`（list/detail）与 `registerCreationTools`（new/fork，按 capabilities 裁剪）；`registerButlerTools` 保留为两者组合，测试与兼容入口不变；
+  - 两段注入：`inject(['tools'])` 注册读工具；`inject(['tools','sessionController'])` 在两者都可用时注册创建工具（控制器不存在则什么都不注册，headless 仍然不暴露 new/fork）；
+  - 非 `inject` 的旧组合保持原路径（一次性注册，能探测到什么就注册什么）。
+- **证据**：本会话运行时探测（`typeof tools.session_butler_new === 'undefined'`，list/detail 可用）；新增 `tests/m1-apply.test.mjs` 晚绑定用例（延迟控制器出现后注册 new/fork）；测试 59 → 60 全绿。
+- **影响**：修复后 Web 会话需要**重启 DSH 进程**才能看到 new/fork；工具语义、错误码与权限边界不变。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |
