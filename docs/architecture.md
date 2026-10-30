@@ -10,7 +10,7 @@
 1. **不要重做 DSH 已有的能力。** 已发布 rc 通道（rc.2/rc.3/rc.4，抽查一致）与 HEAD 都提供 rename、pin/unpin、archive/unarchive、fork、export（Host Service + Web Remote + GUI 都有）。fork 的 UI 入口有 3 个：会话页已完成轮末尾「在新对话中分支」（传 `atSeq`，可选分叉轮）、侧栏行菜单「分叉会话」、全局快捷键。Threadloom 的真正价值是**设置页的归档/删除管理 + 可恢复删除 + agent 工具面的「会话 → 新会话」**（D-029 删除了会话库/独立管理面；fork 剩余缺口见 D-014/D-015）。
 2. **唯一必须自补的 Host 能力是「删除」**：DSH 没有官方删除 API（设计 note 明确"等真实消费者再加"）。插件侧用「回收站优先 + 跨进程写租约 + 目录移动」实现，长期向上游补 `SessionPersistence.delete()`。
 3. **Web 半不能新增 `@Remote` 命名空间**（Typert 构建期生成、客户端命名空间固定）。删除/回收站走 **`ctx.webServer` 前缀路由 + 同源相对 fetch**，这是已发布第三方插件的生产级做法。
-4. **UI 入口 = 设置页三个 `settings.section` + 会话行 "..." 菜单一项（D-029）**：不注册侧栏入口、不注册 `main` 面板；「已归档的聊天」「回收站」「Threadloom 配置」由 DSH 设置对话框承载；会话行菜单只保留「移入回收站…」。已归档列表用 Host bridge 读取，取消归档复用官方 `ctx.uiWorkspace.unarchiveSession`，删除走 bridge 的回收站。
+4. **UI 入口 = 设置页两个 `settings.section` + 会话行 "..." 菜单一项（D-030）**：不注册侧栏入口、不注册 `main` 面板；「已归档的聊天」「Threadloom 配置」由 DSH 设置对话框承载；会话行菜单只保留「删除聊天…」。已归档列表用 Host bridge `list`（`includeArchived: true, archivedOnly: true`）只读归档行，取消归档复用官方 `ctx.uiWorkspace.unarchiveSession`；删除一步完成：`delete`/`delete-many` 内部走 trash 管线后立即 purge，不再有用户可见的回收站页面。
 5. **包形态 = 普通 npm 包**：`dsh.bundle.patch` + Host ESM 入口 + `dsh.client` 浏览器半 + 顶层 `engines.dsh`；浏览器半是 `window.__ModuleLoader__.load({id, factory})` 经典脚本，React 等 11 个 platform seed 必须 external。
 
 ## 1. 事实基线（0.2.1-rc.3，已核实）
@@ -76,7 +76,7 @@ dsh-session-butler/
 │   ├── config.ts             # Schemastery Config（已实现）
 │   ├── shared/identity.ts    # 稳定标识：包名、行 id、panel id、API 前缀
 │   ├── host/                 # M1+：service / capabilities / trash / bridge / commands / tools
-│   └── client/               # 0.2.0：apply、设置页三入口、行菜单、插件页健康、bridge 客户端
+│   └── client/               # 0.2.1：apply、设置页两入口、行菜单、插件页健康、bridge 客户端
 ├── scripts/{build-client,validate-package,clean}.mjs
 ├── tests/                    # node:test 产物冒烟 + manifest 契约
 └── lib/                      # 构建产物（发布，不提交）
@@ -185,11 +185,11 @@ purge(id):   trash 记录存在 → rm -rf trash/<id> → 删除记录（permane
 
 ```
 src/client/index.tsx       # apply/inject：slots/locale/uiWorkspace/sessions
-   ├── ctx.slots.inject('settings.section', …) × 3   # 已归档的聊天 / 回收站 / Threadloom
+   ├── ctx.slots.inject('settings.section', …) × 2   # 已归档的聊天 / Threadloom
    ├── ctx.slots.inject('sidebar.workspaces.session.menu.item', …)  # 仅「移入回收站…」
    └── ctx.slots.inject('plugins.detail.badge' | 'plugins.detail.section', …)  # 健康/诊断
-src/client/settings.tsx    # 三个设置分区：已归档列表/删除、回收站、配置表单 + 确认对话框
-src/client/menu.tsx        # 会话行 "..." 菜单项：移入回收站…（原生菜单样式 + 确认）
+src/client/settings.tsx    # 两个设置分区：已归档列表/一步删除、配置表单 + 确认对话框
+src/client/menu.tsx        # 会话行 "..." 菜单项：删除聊天…（原生菜单样式 + 确认）
 src/client/plugin-page.tsx # 插件详情页健康徽标与诊断区块（配置已迁到设置）
 src/client/bridge.ts       # document-relative fetch + 网关信封 + BridgeError
 src/client/locale.ts       # NS='session-butler' + zh/en 字典（ctx.locale.register 运行时注册）
@@ -202,13 +202,13 @@ src/client/contract.ts     # 本地结构化端口（不 import 任何 @deepseek
 - 字典先注册、槽位后注册，并用一个 effect 的 disposer 数组统一逆序释放；注册中途抛错时先回滚已注册项再抛出，避免 loader 重试时出现 `locale namespace ... already has locale`。
 - 设置页的删除/全部删除/永久删除确认框用页内 `position: fixed` 对话框（状态与页面同源，避免为浮层引入跨组件 store）；行菜单的删除用 `window.confirm`（菜单项会随菜单关闭卸载，无法安全持有弹窗状态）。
 - 数据刷新：设置页的取消归档/删除/恢复/永久删除后重新拉取本页数据；删除/取消归档后调用 `ctx.sessions.refresh()` 让侧栏跟上。改名/置顶/归档（官方）仍由 DSH UI 负责。
-- 已归档的聊天：bridge `list`（`includeArchived: true, includeSubagents: false, limit: 100`）后过滤 `archived`；「全部删除」按 ≤50/批调用 `trash-many`。回收站：bridge `list-trash` + `restore` + `purge`（`permanentDelete` 配置控制）。
+- 已归档的聊天：bridge `list`（`includeArchived: true, archivedOnly: true, includeSubagents: false, limit: 100`）只读归档行；「永久删除」调 `delete`、「全部删除」按 ≤50/批调 `delete-many`；Host 在内部 trash 管线后立即 purge。CLI 仍可用 `list-trash`/`restore`/`purge`。
 
-### 4.1 设置页与插件页集成（0.2.0 / D-029）
+### 4.1 设置页与插件页集成（0.2.1 / D-030）
 
-- **配置**：`src/config.ts` 的 5 个字段全部 `.volatile()`（`trashRetentionDays`、`cascadeSubagents`、`permanentDelete`、`liveSettleTimeoutMs`、`inlineMenuEnabled`），客户端经 `ctx.get('configForms').get('session-butler')` 取得表单，`ThreadloomConfigSection` 渲染并保存；Host service 在使用点读取（`() => readConfigValue(...)`）以支持热生效。
-- **设置页贡献**：`src/client/settings.tsx` 通过 `settings.section` 注册三个分区（`archived-sessions`、`threadloom-trash`、`threadloom`，order 44/45/46）；宿主未声明 `settings.section` 时静默跳过。
-- **行菜单**：`inlineMenuEnabled`（或旧字段 `panelEntryEnabled`）控制是否注册「移入回收站…」；点击后 `window.confirm`，成功调用 bridge `trash` 并 `ctx.sessions.refresh()`。
+- **配置**：`src/config.ts` 的 5 个字段全部 `.volatile()`（`trashRetentionDays`、`cascadeSubagents`、`permanentDelete`、`liveSettleTimeoutMs`、`inlineMenuEnabled`），客户端经 `ctx.get('configForms').get('session-butler')` 取得表单，`ThreadloomConfigSection` 渲染并保存 4 个字段（`permanentDelete` 仅保留 schema 兼容与 CLI purge）；Host service 在使用点读取（`() => readConfigValue(...)`）以支持热生效。
+- **设置页贡献**：`src/client/settings.tsx` 通过 `settings.section` 注册两个分区（`archived-sessions`、`threadloom`，order 44/45）；宿主未声明 `settings.section` 时静默跳过。
+- **行菜单**：`inlineMenuEnabled`（或旧字段 `panelEntryEnabled`）控制是否注册「删除聊天…」；点击后 `window.confirm`，成功调用 bridge `delete` 并 `ctx.sessions.refresh()`。
 - **插件页贡献**：只保留 `plugins.detail.badge`（健康徽标）与 `plugins.detail.section`（诊断区块）；`plugins.row.config`/`bundle.config`/`detail.actions` 已在 D-029 删除。
 - **健康快照**：`service.health()` + 桥 `status` 方法返回版本、存储可写性、后端能力、会话/回收站/运行中计数与最近 20 条错误；错误环形缓冲由桥在 `ok:false`/内部错误时记录。
 

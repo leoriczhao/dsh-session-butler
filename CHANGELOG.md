@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-10-30
+
+### Fixed — D-030：删除即删除，取消用户可见回收站
+
+- **移除回收站页面**：删除 `ThreadloomTrashSection` 与 `threadloom-trash` 设置分区；设置页只剩「已归档的聊天」「Threadloom」两项。用户指出「已归档的聊天」+「回收站」两个页面、删除后还要去回收站再删一次不合逻辑。
+- **一步永久删除**：已归档页「永久删除」/「全部删除」与行菜单「删除聊天…」直接调新 bridge `delete`/`delete-many`；Host 先走既有 trash 管线（跨进程租约、运行中停止、同盘移动）再立即 purge，成功后回收站无残留。确认对话框明确「永久删除，无法恢复」。
+- **不再依赖 `permanentDelete` 配置**：GUI 删除以显式确认为授权；该字段保留在 schema/CLI 供 `purge` 使用，不再出现在设置表单。
+- **底层安全网保留**：`/session-butler trash|restore|purge` 命令与 Host 测试仍在；若 purge 中途失败，记录留在回收站，可用 CLI 恢复（GUI 不暴露）。
+- **行菜单**：id 从 `threadloom.trash` 改为 `threadloom.delete`，文案改为「删除聊天…」。
+- **Host 新增**：`SessionButlerService.delete`/`deleteMany` + bridge `delete`/`delete-many`；`delete` 绕过 `permanentDelete` 门禁（调用方已显式确认）。
+- **文档**：docs/decisions.md 新增 D-030（D-003/D-029 标注用户可见部分被取代）；README/usage/architecture/D3 更新；版本 0.2.1。
+- **测试**：m1-delete 覆盖 delete 不留回收站记录/级联/deleteMany 逐项失败；m2-bridge 覆盖 delete 转发；m2-client 更新为两个设置分区 + 删除文案；npm run verify 65 tests + 57 package checks 全绿。
+- **live 验证（2026-10-30 09:50，Client 半热加载）**：设置左栏只剩 Archived chats / Threadloom；已归档页按钮为 Unarchive / Delete permanently；行菜单只剩官方项 + Delete chat…。证据 `docs/evidence/live-settings-nav-0.2.1.png`、`live-settings-archived-0.2.1.png`、`live-row-menu-0.2.1.png`。
+- **live 状态**：新增 Host `delete`/`delete-many` 需重启 3080 后生效；重启前删除请求会 404（预期），重启后需实际删一个临时会话确认无回收站残留。
+
 ## [0.2.0] — 2026-10-29
 
 ### Changed — D-029：会话管理入口全部收进设置页（Codex 模式）

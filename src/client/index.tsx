@@ -22,16 +22,16 @@ import type {
   SlotRegistrationLike,
 } from './contract.js'
 import { EN, NS, ZH } from './locale.js'
-import { ThreadloomTrashMenuItem } from './menu.js'
-import type { TrashMenuItemProps } from './menu.js'
+import { ThreadloomDeleteMenuItem } from './menu.js'
+import type { DeleteMenuItemProps } from './menu.js'
 import { ThreadloomDetailBadge, ThreadloomDetailSection } from './plugin-page.js'
-import { ThreadloomArchivedSection, ThreadloomConfigSection, ThreadloomTrashSection } from './settings.js'
+import { ThreadloomArchivedSection, ThreadloomConfigSection } from './settings.js'
 import type { SectionActions } from './settings.js'
 
 // Exported for the client tests; the browser module table itself only uses
 // `apply` and `inject`.
-export { ThreadloomArchivedSection, ThreadloomConfigSection, ThreadloomTrashSection } from './settings.js'
-export { ThreadloomTrashMenuItem } from './menu.js'
+export { ThreadloomArchivedSection, ThreadloomConfigSection } from './settings.js'
+export { ThreadloomDeleteMenuItem } from './menu.js'
 
 /** Client services this half needs. */
 export const inject: string[] = ['slots', 'locale', 'uiWorkspace', 'sessions']
@@ -95,8 +95,7 @@ function applyInner(ctx: ClientContextLike): void {
 
       const sections: readonly SettingsSectionSpec[] = [
         { id: 'archived-sessions', order: 44, labelKey: 'settings.archived', component: ThreadloomArchivedSection },
-        { id: 'threadloom-trash', order: 45, labelKey: 'settings.trash', component: ThreadloomTrashSection },
-        { id: 'threadloom', order: 46, labelKey: 'settings.config', component: ThreadloomConfigSection },
+        { id: 'threadloom', order: 45, labelKey: 'settings.config', component: ThreadloomConfigSection },
       ]
       for (const section of sections) {
         disposers.push(ctx.slots.inject('settings.section', () => ctx.slots.register(
@@ -113,9 +112,9 @@ function applyInner(ctx: ClientContextLike): void {
 
       // Row menu: the one action the official menu does not own.
       disposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register(
-        { name: 'sidebar.workspaces.session.menu.item', id: 'threadloom.trash', order: 470, locale: NS },
-        ((props: unknown) => ThreadloomTrashMenuItem({
-          ...(props as TrashMenuItemProps),
+        { name: 'sidebar.workspaces.session.menu.item', id: 'threadloom.delete', order: 470, locale: NS },
+        ((props: unknown) => ThreadloomDeleteMenuItem({
+          ...(props as DeleteMenuItemProps),
           t,
           refreshSessions,
           ...(configForm === undefined ? {} : { configForm }),

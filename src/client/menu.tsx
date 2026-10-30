@@ -1,10 +1,10 @@
 /**
- * Session-row "..." menu contribution (D-029).
+ * Session-row "..." menu contribution (D-030).
  *
  * Codex keeps chat actions on the row's own menu; Threadloom adds the one
- * action the official menu does not own: moving a session into the recoverable
- * trash. Settings → Archived chats is where deletion lives for archived chats;
- * this row action is the shortcut for an active chat.
+ * action the official menu does not own: permanently deleting a chat. The row
+ * menu follows the same one-step delete rule as Settings → Archived chats:
+ * confirm once, then the chat is gone (no recycle-bin second step).
  *
  * @module dsh-session-butler/client/menu
  */
@@ -19,7 +19,7 @@ import { inlineMenuEnabledFromConfig } from './settings.js'
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 /** Owner props plus the injected actions a row-menu entry needs. */
-export interface TrashMenuItemProps {
+export interface DeleteMenuItemProps {
   readonly sessionId: string
   readonly displayTitle: string
   readonly useMenuOpenState: () => readonly [boolean, (open: boolean) => void]
@@ -28,29 +28,29 @@ export interface TrashMenuItemProps {
   readonly refreshSessions?: () => void
 }
 
-/** "Move to trash" row: confirm, then bridge the deletion and refresh the list. */
-export function ThreadloomTrashMenuItem(props: TrashMenuItemProps): ReactElement | null {
+/** "Delete chat" row: confirm once, then permanently delete and refresh the list. */
+export function ThreadloomDeleteMenuItem(props: DeleteMenuItemProps): ReactElement | null {
   const { sessionId, displayTitle, useMenuOpenState, t, configForm, refreshSessions } = props
   const [, setMenuOpen] = useMenuOpenState()
   if (!inlineMenuEnabledFromConfig(configForm?.getSnapshot().value)) return null
-  const trash = (): void => {
+  const remove = (): void => {
     setMenuOpen(false)
     const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
       ? true
-      : window.confirm(t('menu.trash.body', { title: displayTitle }))
+      : window.confirm(t('menu.delete.body', { title: displayTitle }))
     if (!confirmed) return
-    void callBridge('trash', { sessionId }).then(
+    void callBridge('delete', { sessionId }).then(
       () => { refreshSessions?.() },
       (error: unknown) => {
-        console.error('dsh-session-butler: trash from the row menu failed', error)
+        console.error('dsh-session-butler: delete from the row menu failed', error)
       },
     )
   }
   return (
     <>
       <style>{MENU_CSS}</style>
-      <button type="button" role="menuitem" className="sb-menu-item sb-menu-danger" onClick={trash}>
-        {t('menu.trash')}
+      <button type="button" role="menuitem" className="sb-menu-item sb-menu-danger" onClick={remove}>
+        {t('menu.delete')}
       </button>
     </>
   )

@@ -6,18 +6,20 @@
 >
 > **v0.2 修订（2026-10-29，用户纠正）**：ChatGPT/Codex **没有「会话管理」按钮**——会话管理内联在侧栏会话行（hover pin/archive、"..." 菜单、搜索/筛选）。据此删除侧栏 `sidebar.panellist` 入口，改为会话行 "..." 菜单两个动作（`会话详情…` / `会话库…`），完整 Library 通过 `ctx.layout.selectPanel` 从菜单或 Plugins 页打开。决策见 D-023（D-009 相应作废）。
 
-> **v0.3 当前实现（2026-10-29，D-029，以此为准）** —— 用户第二次纠正后，产品形态改为「设置页管理」：
+> **v0.4 当前实现（2026-10-30，D-030，以此为准）** —— 用户第三次纠正后，删除改为一步完成、回收站页面取消：
+>
+> 1. **不再有会话库/Library、main 面板、会话详情弹窗、侧栏按钮，也没有用户可见的回收站页面**；本文下面 §0–§12 是历史设计，仅作研究记录，**不代表当前实现**。
 >
 > 1. **不再有会话库/Library、main 面板、会话详情弹窗、侧栏按钮**；用户明确「没有会话库这个 feature」。本文下面 §0–§12 是 v0.1/v0.2 历史设计，仅作研究记录，**不代表当前实现**。
-> 2. **三个设置分区**（DSH 设置对话框，settings.section）：已归档的聊天（id archived-sessions，order 44；搜索/按项目分组/取消归档/删除/全部删除）、回收站（id threadloom-trash，order 45；恢复/永久删除）、Threadloom 配置（id threadloom，order 46；原 5 字段）。
-> 3. **会话行 "..." 菜单只剩一项**「移入回收站…」（id threadloom.trash，order 470；window.confirm 后走 bridge trash，再刷新会话列表；inlineMenuEnabled 可关）。
+> 2. **两个设置分区**（DSH 设置对话框，settings.section）：已归档的聊天（id archived-sessions，order 44；搜索/按项目分组/取消归档/永久删除/全部删除）、Threadloom 配置（id threadloom，order 45；4 个字段）。
+> 3. **会话行 "..." 菜单只剩一项**「删除聊天…」（id threadloom.delete，order 470；window.confirm 后走 bridge delete，再刷新会话列表；inlineMenuEnabled 可关）。
 > 4. **插件页只保留健康/诊断**（plugins.detail.badge / plugins.detail.section）；plugins.row.config / bundle.config / detail.actions 全部删除，配置只在设置里出现。
-> 5. **删除仍是安全网**：已归档列表的删除/全部删除、行菜单删除都进入回收站；永久删除需 permanentDelete=confirm + 输入完整 id；已归档列表的取消归档调用官方 uiWorkspace.unarchiveSession。
-> 6. **数据来源不变**：bridge list（includeArchived: true）过滤 archived；trash/trash-many（≤50/批）/list-trash/restore/purge/status；无新增 Host API。
+> 5. **删除即删除**：已归档页删除/全部删除、行菜单删除都直接调 bridge delete/delete-many；Host 先走内部 trash 管线（租约/运行中停止/同盘移动）再立即 purge，不留回收站记录；确认框明确「永久删除，无法恢复」。CLI 的 trash/restore/purge 保留为高级恢复路径。
+> 6. **数据来源**：bridge list（includeArchived: true, archivedOnly: true）只读归档行；delete/delete-many/status/list-trash 等；新增 Host delete/delete-many。
 > 7. **参考证据**：docs/evidence/chatgpt-archived-chats-settings.png（ChatGPT 设置 → 已归档的聊天）、docs/evidence/dsh-settings-dialog.png（DSH 设置对话框）；settings.section 契约见 packages/client/ui-settings/src/client/contract/slots.ts:57，第三方实例见 dsh-dream 的 ctx.slots.inject('settings.section'）。
-> 8. **状态**：代码已改（settings.tsx / menu.tsx / index.tsx；删除 page.tsx / navigation.ts），62 tests 全绿；**live 3080 已用 Playwright 验证**（2026-10-29 18:09，Client 半页面刷新即热加载）：设置左栏 Archived chats / Trash / Threadloom 三分区、已归档 7 条按项目分组、Trash 2 条、配置 5 字段、行菜单只剩官方项 + Move to trash…。证据 `docs/evidence/live-settings-nav.png`、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live-settings-threadloom.png`、`live-row-menu.png`。
+> 8. **状态**：D-030 代码已改（settings.tsx / menu.tsx / index.tsx / bridge / service），65 tests 全绿；**live 3080 Client 半已验证**（2026-10-30 09:50，页面刷新热加载）：设置左栏只剩 Archived chats / Threadloom、已归档按钮为 Delete permanently、行菜单为 Delete chat…（证据 `docs/evidence/live-settings-nav-0.2.1.png`、`live-settings-archived-0.2.1.png`、`live-row-menu-0.2.1.png`）。新 Host delete 方法需重启后验证并补实际删除截图。
 >
-> 当前完整设计摘要、对齐矩阵与验证清单见 README「能力」表、docs/decisions.md D-029、research/2026-10-29-research-corrections.md；本文 §3 的 IA、§4 的 Library、§8 的插件页配置、§10 的 D3.1 Library 均已作废。
+> 当前完整设计摘要、对齐矩阵与验证清单见 README「能力」表、docs/decisions.md D-030、research/2026-10-29-research-corrections.md；本文 §3 的 IA、§4 的 Library、§8 的插件页配置、§10 的 D3.1 Library 均已作废。
 
 ---
 

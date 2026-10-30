@@ -134,7 +134,7 @@ test('apply registers Codex-style settings sections and no library/nav entries',
   assert.ok(fake.localeRegistrations.every(entry => typeof entry.dict['settings.archived'] === 'string'))
 
   const names = fake.slotRegistrations.map(entry => entry.options.name)
-  assert.deepEqual(names.filter(name => name === 'settings.section').length, 3)
+  assert.deepEqual(names.filter(name => name === 'settings.section').length, 2)
   assert.equal(names.filter(name => name === 'sidebar.workspaces.session.menu.item').length, 1)
   assert.deepEqual(names.filter(name => name.startsWith('plugins.')).sort(), [
     'plugins.detail.badge',
@@ -147,13 +147,13 @@ test('apply registers Codex-style settings sections and no library/nav entries',
   assert.equal(names.includes('plugins.detail.actions'), false)
 
   const sections = fake.slotRegistrations.filter(entry => entry.options.name === 'settings.section')
-  assert.deepEqual(sections.map(entry => entry.options.id), ['archived-sessions', 'threadloom-trash', 'threadloom'])
-  assert.deepEqual(sections.map(entry => entry.options.order), [44, 45, 46])
-  assert.deepEqual(sections.map(entry => entry.options.label()), ['已归档的聊天', '回收站', 'Threadloom'])
+  assert.deepEqual(sections.map(entry => entry.options.id), ['archived-sessions', 'threadloom'])
+  assert.deepEqual(sections.map(entry => entry.options.order), [44, 45])
+  assert.deepEqual(sections.map(entry => entry.options.label()), ['已归档的聊天', 'Threadloom'])
   assert.ok(sections.every(entry => typeof entry.component === 'function'))
 
   const menu = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
-  assert.equal(menu.options.id, 'threadloom.trash')
+  assert.equal(menu.options.id, 'threadloom.delete')
   assert.equal(menu.options.order, 470)
 })
 
@@ -165,18 +165,18 @@ test('each slot registers only after its own declaration', async () => {
   assert.equal(fake.localeRegistrations.length, 2)
 
   const sectionCallbacks = fake.injectionCallbacks.get('settings.section') ?? []
-  assert.equal(sectionCallbacks.length, 3)
+  assert.equal(sectionCallbacks.length, 2)
   for (const callback of sectionCallbacks) callback()
   assert.deepEqual(
     fake.slotRegistrations.map(entry => entry.options.name),
-    ['settings.section', 'settings.section', 'settings.section'],
+    ['settings.section', 'settings.section'],
   )
 
   const menuCallbacks = fake.injectionCallbacks.get('sidebar.workspaces.session.menu.item') ?? []
   assert.equal(menuCallbacks.length, 1)
   menuCallbacks[0]()
-  assert.equal(fake.slotRegistrations.length, 4)
-  assert.equal(fake.slotRegistrations[3].options.name, 'sidebar.workspaces.session.menu.item')
+  assert.equal(fake.slotRegistrations.length, 3)
+  assert.equal(fake.slotRegistrations[2].options.name, 'sidebar.workspaces.session.menu.item')
 })
 
 test('effect disposal releases locale and every slot registration', async () => {
@@ -191,7 +191,6 @@ test('effect disposal releases locale and every slot registration', async () => 
     'plugins.detail.section',
     'plugins.detail.badge',
     'sidebar.workspaces.session.menu.item',
-    'settings.section',
     'settings.section',
     'settings.section',
   ])
@@ -210,7 +209,7 @@ test('the archived-chats page renders the Codex settings surface', async () => {
   assert.doesNotMatch(html, /会话库/)
 })
 
-test('the config page renders the five plugin fields in Settings', async () => {
+test('the config page renders the four plugin fields in Settings', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext()
   plugin.apply(fake.ctx)
@@ -220,10 +219,11 @@ test('the config page renders the five plugin fields in Settings', async () => {
   assert.match(html, /回收站保留天数/)
   assert.match(html, /运行中会话等待超时/)
   assert.match(html, /级联删除子代理会话/)
-  assert.match(html, /永久删除/)
+  assert.match(html, /会话行菜单动作/)
+  assert.doesNotMatch(html, /永久删除/)
 })
 
-test('the row menu exposes only the move-to-trash action and follows the switch', async () => {
+test('the row menu exposes only the delete action and follows the switch', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext()
   plugin.apply(fake.ctx)
@@ -235,7 +235,8 @@ test('the row menu exposes only the move-to-trash action and follows the switch'
     t: zhTranslator(fake),
   }
   const html = renderToStaticMarkup(React.createElement(menu.component, props))
-  assert.match(html, /移入回收站/)
+  assert.match(html, /删除聊天/)
+  assert.doesNotMatch(html, /回收站/)
   assert.doesNotMatch(html, /会话库/)
   assert.doesNotMatch(html, /会话详情/)
 

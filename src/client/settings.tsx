@@ -19,7 +19,6 @@ import type {
   ConfigFormLike,
   ConfigFormSnapshotLike,
   ConfigPathOpLike,
-  TrashEntryLike,
 } from './contract.js'
 
 /** Locale translator shape; bound once at registration so slots need no locale prop. */
@@ -73,20 +72,6 @@ function formatTime(value: number | undefined): string {
 /** Keep long ids readable in a list row. */
 function shortId(id: string): string {
   return id.length <= 20 ? id : id.slice(0, 8) + '…' + id.slice(-4)
-}
-
-/** Subscribe to the plugin's DSH configuration form. */
-function useConfigValue(form: ConfigFormLike<ClientConfigLike> | undefined): ClientConfigLike | undefined {
-  const [value, setValue] = useState<ClientConfigLike | undefined>(() => form?.getSnapshot().value)
-  useEffect(() => {
-    if (form === undefined) {
-      setValue(undefined)
-      return
-    }
-    setValue(form.getSnapshot().value)
-    return form.subscribe(() => { setValue(form.getSnapshot().value) })
-  }, [form])
-  return value
 }
 
 /** Subscribe to the full config form snapshot (status, value, revision). */
@@ -236,7 +221,7 @@ export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
     setError(null)
     setNotice(null)
     try {
-      await call('trash', { sessionId: row.id })
+      await call('delete', { sessionId: row.id })
       setRows(previous => previous.filter(item => item.id !== row.id))
       setNotice(t('archived.deleted', { title: row.title ?? shortId(row.id) }))
       refreshSessions?.()
@@ -255,7 +240,7 @@ export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
       let moved = 0
       for (let offset = 0; offset < ids.length; offset += 50) {
         const chunk = ids.slice(offset, offset + 50)
-        const result = await call<{ moved?: readonly string[] }>('trash-many', { sessionIds: chunk })
+        const result = await call<{ moved?: readonly string[] }>('delete-many', { sessionIds: chunk })
         moved += result.moved?.length ?? 0
       }
       setNotice(t('archived.deletedAll', { count: moved }))
@@ -359,127 +344,6 @@ export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
   )
 }
 
-/** Settings § Trash: recoverable deletion, the safety net under the delete buttons. */
-export function ThreadloomTrashSection(props: SectionActions): ReactElement {
-  const { t, call, configForm } = props
-  const configValue = useConfigValue(configForm)
-  const permanentDelete = configValue?.permanentDelete ?? 'disabled'
-  const [entries, setEntries] = useState<readonly TrashEntryLike[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<DialogSpec | null>(null)
-
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await call<{ entries?: readonly TrashEntryLike[] }>('list-trash')
-      setEntries(result.entries ?? [])
-    } catch (reason) {
-      setError(messageOf(reason))
-    } finally {
-      setLoading(false)
-    }
-  }, [call])
-
-  useEffect(() => { void load() }, [load])
-
-  const restore = async (id: string): Promise<void> => {
-    setBusy(id)
-    setError(null)
-    setNotice(null)
-    try {
-      await call('restore', { sessionId: id })
-      setNotice(t('trash.restored'))
-      await load()
-    } catch (reason) {
-      setError(messageOf(reason))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const purge = async (id: string, typed: string): Promise<void> => {
-    setBusy(id)
-    setError(null)
-    setNotice(null)
-    try {
-      await call('purge', { sessionId: id, confirmId: typed })
-      setNotice(t('trash.purged'))
-      await load()
-    } catch (reason) {
-      setError(messageOf(reason))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <div className="sb-settings">
-      <style>{CSS}</style>
-      <header className="sb-settings-header">
-        <div>
-          <h2>{t('trash.title')}</h2>
-          <p className="sb-settings-subtitle">{t('trash.subtitle')}</p>
-        </div>
-        <span className="sb-settings-count">{entries.length}</span>
-      </header>
-      <Notice text={notice} />
-      <Notice text={error} error />
-      {loading ? <p className="sb-settings-note">{t('trash.loading')}</p> : null}
-      {!loading && entries.length === 0 ? <p className="sb-settings-empty">{t('trash.empty')}</p> : null}
-      {entries.length === 0 ? null : (
-        <ul className="sb-settings-list">
-          {entries.map(entry => (
-            <li key={entry.id} className="sb-settings-row">
-              <div className="sb-settings-row-main">
-                <span className="sb-settings-row-title">{entry.originalPath}</span>
-                <span className="sb-settings-row-meta">
-                  {shortId(entry.id)} · {t('trash.of', { time: formatTime(entry.deletedAt) })}
-                  {entry.expiresAt === null ? '' : ' · ' + t('trash.expires', { time: formatTime(entry.expiresAt) })}
-                </span>
-              </div>
-              <div className="sb-settings-row-actions">
-                <button
-                  type="button"
-                  className="sb-settings-button"
-                  disabled={busy !== null}
-                  onClick={() => { void restore(entry.id) }}
-                >
-                  {t('trash.restore')}
-                </button>
-                <button
-                  type="button"
-                  className="sb-settings-button sb-settings-danger"
-                  disabled={busy !== null || permanentDelete !== 'confirm'}
-                  {...(permanentDelete === 'confirm' ? {} : { title: t('trash.permanentDisabled') })}
-                  onClick={() => {
-                    setDialog({
-                      title: t('dialog.purge.title'),
-                      body: t('dialog.purge.body2', { id: entry.id }),
-                      confirmLabel: t('trash.purge'),
-                      danger: true,
-                      input: { placeholder: entry.id, expected: entry.id },
-                      confirm: typed => { setDialog(null); void purge(entry.id, typed) },
-                    })
-                  }}
-                >
-                  {t('trash.purge')}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="sb-settings-note">
-        {permanentDelete === 'confirm' ? t('footer.retention', { days: 30 }) : t('trash.permanentDisabled')}
-      </p>
-      {dialog === null ? null : <ConfirmDialog spec={dialog} onCancel={() => { setDialog(null) }} />}
-    </div>
-  )
-}
 
 /** Settings § Threadloom: the plugin's configuration form, once, in Settings. */
 export function ThreadloomConfigSection(props: SectionActions): ReactElement {
@@ -557,15 +421,7 @@ function SettingsBody({ snapshot, form, t }: {
             checked={inlineMenuEnabledFromConfig(values)}
             onChange={event => { void save('inlineMenuEnabled', event.target.checked) }} />
         </label>
-        <label className="sb-settings-field">
-          <span>{t('plugin.config.permanent')}</span>
-          <select className="sb-settings-input" disabled={disabled}
-            value={values.permanentDelete ?? 'disabled'}
-            onChange={event => { void save('permanentDelete', event.target.value) }}>
-            <option value="disabled">{t('plugin.config.permanent.disabled')}</option>
-            <option value="confirm">{t('plugin.config.permanent.confirm')}</option>
-          </select>
-        </label>
+
       </div>
       {state === 'saved' ? <p className="sb-settings-note sb-settings-success">{t('plugin.config.saved')}</p> : null}
       {state === 'failed' ? <p className="sb-settings-note sb-settings-error">{t('plugin.config.saveFailed')}</p> : null}

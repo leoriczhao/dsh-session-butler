@@ -286,6 +286,55 @@ test('purge requires the config gate and the exact id, then removes the entry', 
   }
 })
 
+test('delete removes the session permanently without leaving a trash entry', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-a')
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-a': header('session-a') },
+      permanentDelete: 'disabled',
+    })
+
+    const result = await service.delete('session-a', { currentSessionId: 'session-other' })
+    assert.deepEqual(result.deleted, ['session-a'])
+    assert.equal((await readdir(path.join(home.sessionsRoot, '--proj--'))).length, 0)
+    assert.equal((await service.listTrash()).entries.length, 0)
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('delete cascades subagent descendants and deleteMany reports per-item outcomes', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-a')
+    await addSession(home.sessionsRoot, '--proj--', 'session-child')
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: {
+        'session-a': header('session-a'),
+        'session-child': header('session-child', { origin: 'subagent' }),
+      },
+      descendants: { 'session-a': [{ header: header('session-child', { origin: 'subagent' }), live: false, persisted: true }] },
+    })
+
+    const result = await service.delete('session-a')
+    assert.deepEqual([...result.deleted].sort(), ['session-a', 'session-child'])
+    assert.equal((await readdir(path.join(home.sessionsRoot, '--proj--'))).length, 0)
+    assert.equal((await service.listTrash()).entries.length, 0)
+
+    const batch = await service.deleteMany(['session-missing'])
+    assert.equal(batch.items.length, 1)
+    assert.equal(batch.items[0].ok, false)
+    assert.deepEqual(batch.failed, ['session-missing'])
+  } finally {
+    await home.cleanup()
+  }
+})
+
 test('restore refuses an occupied original path and keeps the trash entry', async () => {
   const home = await makeHome()
   try {

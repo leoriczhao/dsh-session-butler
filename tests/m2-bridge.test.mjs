@@ -86,6 +86,11 @@ function makeService() {
       return { items: sessionIds.map(id => ({ id, ok: true, moved: [id] })), moved: sessionIds, failed: [] }
     },
     async trash(sessionId, options) { this.calls.push(['trash', sessionId, options]); return { trashed: [sessionId], trashRoot: '/trash' } },
+    async delete(sessionId, options) { this.calls.push(['delete', sessionId, options]); return { deleted: [sessionId] } },
+    async deleteMany(sessionIds, options) {
+      this.calls.push(['delete-many', sessionIds, options])
+      return { items: sessionIds.map(id => ({ id, ok: true, moved: [id] })), moved: sessionIds, failed: [] }
+    },
     async restore(sessionId) { return { restored: sessionId, path: '/restored' } },
     async purge(sessionId, confirmId) {
       if (confirmId !== sessionId) throw new ButlerError('confirm-mismatch', 'exact id required', { details: { sessionId } })
@@ -134,6 +139,27 @@ test('trash passes the cascade default and an explicit override', async () => {
   assert.deepEqual(service.calls, [
     ['trash', 'session-a', { cascade: true }],
     ['trash', 'session-b', { cascade: false }],
+  ])
+})
+
+test('delete and delete-many use the permanent paths', async () => {
+  const { host, routes } = makeHost()
+  const service = makeService()
+  mountBridge(host, service)
+
+  const single = await call(routes[0], fakeRequest({ url: '/session-butler/api/delete', body: { sessionId: 'session-a' } }))
+  assert.equal(single.statusCode, 200)
+  assert.deepEqual(JSON.parse(single.body).value, { deleted: ['session-a'] })
+
+  const batch = await call(routes[0], fakeRequest({
+    url: '/session-butler/api/delete-many',
+    body: { sessionIds: ['session-a', 'session-b'], cascade: false },
+  }))
+  assert.equal(batch.statusCode, 200)
+  assert.deepEqual(JSON.parse(batch.body).value.moved, ['session-a', 'session-b'])
+  assert.deepEqual(service.calls, [
+    ['delete', 'session-a', { cascade: true }],
+    ['delete-many', ['session-a', 'session-b'], { cascade: false }],
   ])
 })
 

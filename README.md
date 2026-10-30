@@ -3,10 +3,10 @@
 [![npm](https://img.shields.io/npm/v/dsh-session-butler.svg)](https://www.npmjs.com/package/dsh-session-butler)
 [![CI](https://github.com/leoriczhao/dsh-session-butler/actions/workflows/ci.yml/badge.svg)](https://github.com/leoriczhao/dsh-session-butler/actions/workflows/ci.yml)
 
-> DeepSeek Harness 的会话管理插件 —— 按 Codex 桌面端的形态管理会话：归档在设置里，删除可恢复。
+> DeepSeek Harness 的会话管理插件 —— 按 Codex 桌面端的形态管理会话：归档在设置里，删除一步完成。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**0.2.0 已构建并验证，待发布**（npm 上最新为 0.1.0；0.1.1 修复 native function calling 的 `parameters` 根 schema，0.1.2 补齐 `session_butler_new` / `session_butler_fork` 工具并修复新会话的 Workspace 归属；0.2.0 把会话管理入口收进设置页并移除会话库面板）
+**状态**：**0.2.1 已构建并验证，待发布**（npm 上最新为 0.1.0；0.1.1 修复 native function calling 的 `parameters` 根 schema，0.1.2 补齐 `session_butler_new` / `session_butler_fork` 工具并修复新会话的 Workspace 归属；0.2.0 把会话管理入口收进设置页并移除会话库面板；0.2.1/D-030 移除回收站页面，删除改为一步永久删除）
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
@@ -17,30 +17,30 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 
 | 能力 | 状态 |
 |---|---|
-| 已归档的聊天（设置页） | ✅ 0.2.0（设置 → 已归档的聊天：搜索、按项目分组、取消归档、删除、全部删除） |
-| **删除（回收站优先 + 恢复 + 永久删除）** | ✅ Host 核心 + 设置 → 回收站（恢复/永久删除）+ 会话行「移入回收站…」；同源桥（`/session-butler` 命令同样可用） |
+| 已归档的聊天（设置页） | ✅ 0.2.1（设置 → 已归档的聊天：搜索、按项目分组、取消归档、永久删除、全部删除） |
+| **删除（一步永久删除）** | ✅ 0.2.1（已归档页「永久删除」/「全部删除」+ 会话行「删除聊天…」；确认后直接删除，无回收站第二步；Host 底层仍走安全移动管线） |
 | 子代理级联删除（fork 永不级联） | ✅ M1 |
 | `/session-butler` 命令 | ✅ M1（list / trash / restore / purge） |
 | Agent 工具：读取 | ✅ M3（`session_butler_list` / `session_butler_detail`） |
 | **Agent 工具：会话 → 新会话** | ✅ 0.1.2（`session_butler_new` 继承调用方 cwd/Workspace/preset 新建空会话，自动归属调用方 workspace；`session_butler_fork` 从调用方会话按已完成轮分叉；只操作调用方会话，不暴露任意 session id；删除等破坏性写操作不进工具面） |
-| 批量操作 | ✅ 已归档/回收站页批量删除（同源桥 `trash-many`，每批 ≤50，逐项结果） |
+| 批量操作 | ✅ 已归档页「全部删除」批量永久删除（同源桥 `delete-many`，每批 ≤50，逐项结果） |
 | 插件页集成 | ✅ 健康徽标 `plugins.detail.badge` + 诊断区块 `plugins.detail.section`（配置已迁至设置页） |
-| Codex 式入口 | ✅ 0.2.0/D-029（无侧栏按钮、无会话库面板；设置页三个分区：「已归档的聊天」「回收站」「Threadloom」；会话行 "..." 菜单仅保留「移入回收站…」；`inlineMenuEnabled` 可关） |
+| Codex 式入口 | ✅ 0.2.1/D-030（无侧栏按钮、无会话库面板；设置页两个分区：「已归档的聊天」「Threadloom」；会话行 "..." 菜单仅保留「删除聊天…」；`inlineMenuEnabled` 可关） |
 | i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
-| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2` + D3 改动待 `npm publish`（需 2FA） |
+| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2`/`0.2.1` 待 `npm publish`（需 2FA） |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）以及 D3.0/3.0b 改动已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 62 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.1`（设置页入口 + 一步删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 65 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 还差什么（D3 路线图）
 
-D3 方向在 2026-10-29 被用户二次纠正：**不做 Library/管理台，管理入口全部收进设置页**（D-029）。当前完成 0.2.0 的设置页三入口；以下是剩余工作：
+D3 方向在 2026-10-29 被用户二次纠正：**不做 Library/管理台，管理入口全部收进设置页**（D-029）；2026-10-30 三次纠正后删除改为一步完成、取消回收站页面（D-030）。当前完成 0.2.1 的设置页两入口；以下是剩余工作：
 
 | 阶段 | 缺口 |
 |---|---|
-| 发布 | `0.2.0` 尚未 `npm publish`（2FA）；本地提交未 push |
-| D3.1 设置页完善 | 已归档列表分页/workspace 筛选、回收站保留期清理引导、设置分区图标（DSH 只对内置 id 映射图标）、live 会话/句柄的失败提示打磨 |
-| D3.2 组织与生命周期 | 保留期审计与过期提示、永久删除的批量入口（目前逐条）、行菜单删除的 toast/撤销体验（当前原生 confirm） |
-| D3.3 增强 | 设置页内的搜索/筛选状态记忆、批量恢复入口、i18n 补全（设置页三分区已中英） |
+| 发布 | `0.2.1` 尚未 `npm publish`（2FA）；本地提交未 push |
+| D3.1 设置页完善 | 已归档列表分页/workspace 筛选、临时删除的 undo toast（替代原生 confirm）、设置分区图标（DSH 只对内置 id 映射图标）、live 会话/句柄的失败提示打磨 |
+| D3.2 组织与生命周期 | CLI 回收站保留期审计与过期提示、行菜单删除的 toast/撤销体验（当前原生 confirm） |
+| D3.3 增强 | 设置页内的搜索/筛选状态记忆、CLI 恢复入口文档化、i18n 补全（设置页两分区已中英） |
 | 明确非目标 | 跨 workspace 移动（D-012）、自动永久删除、运行中会话强删（D-013）、会话库/独立管理面板（D-029） |
 
 ## 快速开始（开发）
@@ -60,15 +60,16 @@ pnpm run verify        # typecheck + build + tests + npm pack 契约校验
 ```bash
 dsh --profile tl-web --from-default-profile web --dump-config   # 先建临时 web profile
 dsh plugin --profile tl-web add /home/leoric/code/dsh-session-butler
-dsh --profile tl-web --port 3099 --no-open                      # 打开打印的 token URL；设置 → 已归档的聊天 / 回收站 / Threadloom
+dsh --profile tl-web --port 3099 --no-open                      # 打开打印的 token URL；设置 → 已归档的聊天 / Threadloom
 ```
 
 使用入口（与 Codex 桌面端一致）：
 
-- **设置 → 已归档的聊天**：搜索、按项目分组、取消归档、删除、全部删除；
-- **设置 → 回收站**：恢复或永久删除（受 `permanentDelete` 配置约束）；
-- **设置 → Threadloom**：插件配置（5 个 volatile 字段，保存即生效）；
-- **会话行 "..." 菜单 → 移入回收站…**：活动会话的快捷删除（`inlineMenuEnabled` 可关）。
+- **设置 → 已归档的聊天**：搜索、按项目分组、取消归档、永久删除、全部删除；
+- **设置 → Threadloom**：插件配置（4 个 volatile 字段，保存即生效）；
+- **会话行 "..." 菜单 → 删除聊天…**：活动会话的快捷永久删除（`inlineMenuEnabled` 可关）。
+
+> 删除确认后立即执行，没有第二步回收站页面；底层仍先走同盘安全移动与租约探测，再立即 purge。
 
 ## 目录
 
@@ -93,7 +94,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 | 文档 | 内容 |
 |---|---|
 | [`docs/architecture.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
-| [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-029）+ 已收敛问题 + 发布门禁 |
+| [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-030）+ 已收敛问题 + 发布门禁 |
 | [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
 | [`docs/usage.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
 | [`research/dsh-session-management-v2.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
@@ -111,11 +112,11 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 
 ## 决策状态
 
-已定：包名/发布渠道/MIT（D-002）、删除采用回收站优先（D-003）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 入口内联会话行 "..." 菜单、不设侧栏按钮（D-023，取代 D-009 的 sidebar 部分）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
+已定：包名/发布渠道/MIT（D-002）、删除底层采用回收站安全管线（D-003；D-030 后仅内部/CLI，GUI 一步删除）、级联只沿 subagent（D-004）、运行中先归档（D-005）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 入口内联会话行 "..." 菜单、不设侧栏按钮（D-023，取代 D-009 的 sidebar 部分）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、运行中先归档再删（D-013）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
 
-已定（D3）：**D-029（2026-10-29 二次纠正，取代 D-021/D-022/D-023/D-024 的入口与 Library 部分）** 无会话库、无侧栏按钮；管理入口全部收进 DSH 设置页（已归档的聊天 / 回收站 / Threadloom 配置）；会话行菜单仅保留「移入回收站…」；插件页只保留健康/诊断。工具面不变（D-015）。
+已定（D3）：**D-029（2026-10-29 二次纠正，取代 D-021/D-022/D-023/D-024 的入口与 Library 部分）** 无会话库、无侧栏按钮；管理入口全部收进 DSH 设置页。**D-030（2026-10-30 三次纠正，取代 D-029 的回收站页与行菜单动作）** 设置页只剩「已归档的聊天 / Threadloom」两项；删除一步完成（Delete permanently / Delete all / 行菜单 Delete chat…），不再有用户可见回收站；底层仍走安全移动管线，CLI 保留 trash/restore/purge。插件页只保留健康/诊断。工具面不变（D-015）。
 
-Q1–Q7 已全部收敛（回收站保留期 30 天不自动清理；永久删除默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。
+Q1–Q7 已全部收敛（底层回收站保留期 30 天不自动清理；CLI purge 默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。D-030 后 GUI 删除不再受 `permanentDelete` 门禁。
 
 ## 命名
 

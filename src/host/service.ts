@@ -139,6 +139,11 @@ export interface PurgeResult {
   readonly purged: string
 }
 
+/** Result of permanently deleting live sessions (the trash is emptied immediately). */
+export interface DeleteResult {
+  readonly deleted: readonly string[]
+}
+
 /** One listed trash entry. */
 export interface TrashListEntry {
   readonly id: string
@@ -761,6 +766,59 @@ export class SessionButlerService {
         }
       }
     }
+  }
+
+  /**
+   * Permanently delete one session (UI "Delete"): the safe trash pipeline moves
+   * the files out of the corpus, then the trash entry is purged immediately, so
+   * no user-visible trash entry remains. The `permanentDelete` config is not
+   * consulted: the caller has already shown an irreversible-action confirmation.
+   * @param sessionId - session to delete.
+   * @param options - cascade/current-session guards.
+   * @returns ids removed from the corpus (root + cascaded descendants).
+   */
+  async delete(
+    sessionId: string,
+    options: { cascade?: boolean; currentSessionId?: string } = {},
+  ): Promise<DeleteResult> {
+    const moved = await this.trash(sessionId, options)
+    const deleted: string[] = []
+    for (const id of moved.trashed) {
+      const entry = await this.trashStore.find(id)
+      if (entry === undefined) continue
+      await this.trashStore.purge(entry)
+      deleted.push(id)
+    }
+    return { deleted }
+  }
+
+  /**
+   * Permanently delete several sessions independently; one failure does not stop
+   * the rest. Items report their deleted ids in `moved` (same batch envelope as
+   * trash/restore); ids already removed by a cascade are no-op successes.
+   */
+  async deleteMany(
+    sessionIds: readonly string[],
+    options: { cascade?: boolean; currentSessionId?: string } = {},
+  ): Promise<BatchResult> {
+    const ids = this.normalizeBatch(sessionIds)
+    const deleted = new Set<string>()
+    const items: BatchItemResult[] = []
+    for (const id of ids) {
+      if (deleted.has(id)) {
+        items.push({ id, ok: true, moved: [] })
+        continue
+      }
+      try {
+        const result = await this.delete(id, options)
+        for (const item of result.deleted) deleted.add(item)
+        items.push({ id, ok: true, moved: result.deleted })
+      } catch (error) {
+        const failure = asButlerError(error, 'internal', `cannot delete session "${id}"`)
+        items.push({ id, ok: false, moved: [], error: { code: failure.code, message: failure.message } })
+      }
+    }
+    return { items, moved: [...deleted], failed: items.filter(item => !item.ok).map(item => item.id) }
   }
 
   /** Restore one trashed session to its original directory. */

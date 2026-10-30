@@ -33,6 +33,7 @@
 - **理由**：在无官方 API 的前提下，回收站优先把不可逆操作降到最低；租约探测避免删除其他进程正在写的会话；`kind === 'jsonl'` 判断让存储在重构后安全失败而不是误删。
 - **影响**：插件需要文件系统能力（`node:fs` / `dshHomePath`），需要有 fixture 测试；存储重构时可能失效（有稳定错误码兜底）。
 - **实现备注（M1）**：回收站使用**镜像 sessions 树的目录布局 + 每会话 sidecar JSON 元数据**（原子 temp+rename 写入），暂不引入 `storageDomain`：它要求 zod schema 与额外的运行时依赖，而回收站元数据只由本插件读写；M2 若需要跨进程变更通知/查询再评估迁移到 domain。
+- **2026-10-30 三次纠正（D-030 取代用户可见部分）**：用户要求删除即删除；GUI 不再提供回收站页面，删除确认后直接 purge。回收站机制保留为 Host 内部安全管线与 CLI（`/session-butler trash|restore|purge`）的高级恢复能力，不再作为用户流程中的一步。
 
 ### D-004 级联只沿 `origin === 'subagent'`，fork 永不级联 · accepted
 
@@ -236,6 +237,22 @@
   - 会话行 "..." 菜单只剩官方项 + **Move to trash…**（无会话详情/会话库），`live-row-menu.png`。
   - 已归档列表在旧 Host 上首次加载约 7s（`list` includeArchived 会对 100 行读标题）；新增 Host `archivedOnly` 过滤后只读归档行，**需重启 DSH 加载 Host 半**，重启后该项变快。未重启时 Client 仍工作：旧 Host 忽略未知字段，返回全量后由客户端过滤。
   - 未在 live 执行写操作（取消归档/删除）以避免改动用户数据；写入路径由 Host 服务测试与客户端单测覆盖。
+- **2026-10-30 三次纠正（D-030 取代本决策的回收站页与行菜单动作）**：用户指出「已归档的聊天」与「回收站」两个页面、删除还要去回收站再删一次不合逻辑。D-030 移除用户可见回收站，删除改为一步永久删除；本决策的「设置页三个分区」「移入回收站…」「permanentDelete 门禁」相应作废，仅保留「无会话库、配置进设置」的核心。
+
+### D-030 删除即删除：取消用户可见回收站与两步删除（Codex 模式） · accepted（用户 2026-10-30 三次纠正）
+
+- **背景**：D-029 把删除做成「已归档的聊天 → 删除 → 移入回收站 → 回收站 → 永久删除」两步。用户直接质问：为什么同时有「已归档的聊天」和「回收站」两个页面，删除完还要去回收站再删一次？这把插件自己的安全模型泄漏成了用户流程，也违背 Codex/ChatGPT 的单一删除语义。
+- **决策**：
+  - **移除用户可见回收站**：不再注册 `threadloom-trash` 设置分区，删除 `ThreadloomTrashSection`；设置页只剩「已归档的聊天」（order 44）与「Threadloom」（order 45）。
+  - **一步永久删除**：已归档页的「永久删除」/「全部删除」与行菜单的「删除聊天…」直接调用新 bridge `delete` / `delete-many`；Host 先走既有 trash 管线（跨进程租约、运行中停止、同盘 rename），随后立即 purge，成功后回收站不残留记录。确认对话框明确「永久删除，无法恢复」。
+  - **UI 删除不再受 `permanentDelete` 配置门禁**：显式确认即授权；字段保留在 schema 与 CLI 的 `purge` 命令（兼容已有 profile patch），不在设置表单展示。
+  - **安全网留在实现/CLI 层**：`/session-butler trash|restore|purge` 命令与 Host 测试仍保留；若 purge 中途失败，记录仍在回收站，可用 CLI 恢复，但 GUI 不再提供回收站页面。
+  - 行菜单 id 由 `threadloom.trash` 改为 `threadloom.delete`，文案改为「删除聊天…」。
+- **理由**：用户流程只能有一个删除动作；安全网应藏在实现层，而不是要求用户再操作一次。归档与删除是两种状态，不能展示成两个并行的删除列表。
+- **影响**：D-003 的「插件侧回收站优先」从用户可见功能降级为内部实现/CLI 能力；D-029 的回收站页与行菜单动作被取代；`permanentDelete` 默认值不再影响 GUI；Host 新增 `delete`/`delete-many`；版本 **0.2.1**。
+- **验证**：`m1-delete` 覆盖 delete 不留回收站记录、级联、deleteMany 逐项失败；`m2-bridge` 覆盖 delete 转发；`m2-client` 更新为两个设置分区 + 删除文案；`npm run verify` 全绿（65 tests）。
+- **live 验证（2026-10-30 09:50，Client 半页面刷新即热加载）**：设置左栏只剩 **Archived chats / Threadloom** 两项（`docs/evidence/live-settings-nav-0.2.1.png`）；已归档页 7 条仍按项目分组，按钮为 **Unarchive / Delete permanently**，右上 Delete all（`live-settings-archived-0.2.1.png`）；会话行菜单只剩官方项 + **Delete chat…**（`live-row-menu-0.2.1.png`）。
+- **Host 半待重启验证**：新增 `delete`/`delete-many` 需要重启 3080 才加载；重启前 Client 调 delete 会 404（预期）。重启后需实际删除一个临时会话，确认无回收站残留，并补最终截图。
 
 ## 待确认问题（发布前必须收敛）
 

@@ -4,16 +4,16 @@
 
 ## 这是什么
 
-**Threadloom（`dsh-session-butler`）** 是 DeepSeek Harness 的会话管理插件。按 Codex 桌面端（合并后的 ChatGPT/Codex）的形态，它把管理动作放进**设置页**，把删除做成**可恢复**：
+**Threadloom（`dsh-session-butler`）** 是 DeepSeek Harness 的会话管理插件。按 Codex 桌面端（合并后的 ChatGPT/Codex）的形态，它把管理动作放进**设置页**，删除**确认后一步完成**：
 
-- **设置 → 已归档的聊天**：列出从侧栏归档的会话，支持搜索、按项目分组、**取消归档**、**删除**、**全部删除**（与 ChatGPT 桌面端「设置 → 已归档的聊天」一致）；
-- **设置 → 回收站**：删除先进入回收站；可恢复，也可在配置允许时输入完整 session id 永久删除；
-- **设置 → Threadloom**：插件配置（回收站保留天数、级联、永久删除、行菜单开关等 5 个字段），保存即生效；
-- **会话行 "..." 菜单 → 移入回收站…**：活动会话的快捷删除（带确认，可配置关闭）；
+- **设置 → 已归档的聊天**：列出从侧栏归档的会话，支持搜索、按项目分组、**取消归档**、**永久删除**、**全部删除**（与 ChatGPT 桌面端「设置 → 已归档的聊天」一致）；
+- **设置 → Threadloom**：插件配置（级联、删除等待、行菜单开关等 4 个字段），保存即生效；
+- **会话行 "..." 菜单 → 删除聊天…**：活动会话的快捷永久删除（带确认，可配置关闭）；
 - **Agent 工具**：`session_butler_list` / `session_butler_detail` / `session_butler_new` / `session_butler_fork`（删除等破坏性写操作不进入工具面，D-003/D-015）；
-- **命令**：`/session-butler list|trash|restore|purge`（无 UI 场景也可用）。
+- **命令**：`/session-butler list|trash|restore|purge`（CLI 保留内部回收站作为高级恢复手段）。
+- **没有用户可见的回收站页面**：删除确认后立即执行，不再要求去第二个页面二次删除（D-030）。
 
-> **版本状态（0.2.0，已构建待发布）**：0.1.x 完成 Host 删除核心、命令、agent 工具与真实浏览器验证；0.2.0（D-029）按用户纠正移除会话库面板/插件页配置，改为设置页三个分区 + 行菜单删除。真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 已安装验证均在 0.1.x 完成；0.2.0 的界面需**重启 DSH 进程**后生效。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
+> **版本状态（0.2.1，已构建待发布）**：0.1.x 完成 Host 删除核心、命令、agent 工具与真实浏览器验证；0.2.0（D-029）移除会话库面板/插件页配置，改为设置页入口；0.2.1（D-030）按用户三次纠正移除回收站页面，删除改为一步永久删除。真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 已安装验证均在 0.1.x 完成；0.2.1 的 Host 删除方法需**重启 DSH 进程**后生效。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
 
 ## 安装
 
@@ -31,16 +31,15 @@ dsh plugin --profile <profile> add dsh-session-butler@<version>
 dsh plugin --profile <profile> remove dsh-session-butler
 ```
 
-## 入口（0.2.0 / D-029，Codex 模式）
+## 入口（0.2.1 / D-030，Codex 模式）
 
 产品里**没有**「会话管理」按钮，也**没有会话库页面**。所有管理入口都在日常位置：
 
 | 入口 | 位置 | 动作 |
 |---|---|---|
-| 已归档的聊天 | **设置 → 已归档的聊天** | 搜索、按项目分组、取消归档、删除、全部删除 |
-| 回收站 | **设置 → 回收站** | 恢复、永久删除（输入完整 id；需配置允许） |
-| 插件配置 | **设置 → Threadloom** | 5 个字段，保存即写回 profile patch |
-| 删除活动会话 | 会话行 hover → "..." → **移入回收站…** | 确认后进入回收站；`inlineMenuEnabled=false` 时隐藏 |
+| 已归档的聊天 | **设置 → 已归档的聊天** | 搜索、按项目分组、取消归档、永久删除、全部删除 |
+| 插件配置 | **设置 → Threadloom** | 4 个字段，保存即写回 profile patch |
+| 删除活动会话 | 会话行 hover → "..." → **删除聊天…** | 确认后立即永久删除；`inlineMenuEnabled=false` 时隐藏 |
 | 插件健康 | 侧栏 **插件** → Threadloom → 详情 | 健康徽标 + 诊断区块 |
 
 > 设置对话框的分区由 DSH 的 `settings.section` 扩展点提供（与 Claude Style / Dream 记忆等插件同级）；插件不再往插件页塞配置入口。
@@ -49,17 +48,12 @@ dsh plugin --profile <profile> remove dsh-session-butler
 
 ### 已归档的聊天
 
-- 数据来自 Host bridge 的 `list`（`includeArchived: true`）后过滤 `archived === true`；
+- 数据来自 Host bridge 的 `list`（`archivedOnly: true`），只返回归档行；旧 Host 会忽略该字段，由客户端过滤；
 - 取消归档调用 DSH 官方 `uiWorkspace.unarchiveSession`，侧栏随官方 store 恢复显示；
-- 「删除」/「全部删除」走回收站：单条 `trash`、批量按 ≤50 分批 `trash-many`，保留期结束前可恢复；
+- 「永久删除」/「全部删除」直接调用 bridge `delete` / `delete-many`：确认后立即永久删除，**不会**进入第二个回收站页面；
 - 搜索按标题 / 路径 / id 过滤；列表按项目（cwd）分组，无项目归入「无项目」。
 
-### 回收站
-
-- 列出已删除会话（原路径、删除时间、到期时间、级联来源）；
-- 「恢复」移回原目录；原路径被占用时拒绝；
-- 「永久删除」需要 `permanentDelete: confirm` 且输入完整 session id；默认禁用；
-- 过期条目只做标记，不自动清理。
+> 没有「设置 → 回收站」入口（D-030）。Host 仍在内部保留 trash 管线（跨进程租约、运行中停止、同盘移动）作为删除安全层；CLI 的 `trash`/`restore`/`purge` 命令继续可用，但 GUI 删除是一步完成的。
 
 ## 配置（设置 → Threadloom）
 
@@ -67,11 +61,12 @@ dsh plugin --profile <profile> remove dsh-session-butler
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `trashRetentionDays` | 30 | 回收站保留天数；0 = 不设到期时间 |
+| `trashRetentionDays` | 30 | CLI 回收站保留天数；0 = 不设到期时间（GUI 不显示回收站） |
 | `cascadeSubagents` | true | 删除时级联子代理会话（fork 永不级联） |
-| `permanentDelete` | disabled | `disabled` \| `confirm`（confirm 才允许永久删除） |
 | `liveSettleTimeoutMs` | 3000 | 运行中会话先归档停止、再等待的毫秒上限 |
-| `inlineMenuEnabled` | true | 是否在会话行 "..." 菜单显示「移入回收站…」 |
+| `inlineMenuEnabled` | true | 是否在会话行 "..." 菜单显示「删除聊天…」 |
+
+> `permanentDelete` 字段仍保留在 schema 中供 CLI `purge` 使用（兼容已有 profile patch），但 GUI 删除以确认对话框授权，不再要求该配置。
 
 也可以在 profile 的 `cordis.patch.yml` 中覆盖（覆盖时 `config` 整块替换，未写的键使用默认值）。插件详情页仍显示**功能级健康**（版本、会话/回收站/运行中数量、存储可写性、后端能力、最近错误），数据来自插件自报的 `/session-butler/api/status`。
 
@@ -103,14 +98,14 @@ dsh plugin --profile <profile> remove dsh-session-butler
 - `list`：列出回收站条目（删除时间、保留期是否已到、级联来源）。
 - `trash`：预检通过后移入回收站；运行中会话会先归档停止（D-013），迁移中会话会被拒绝；默认级联子代理会话（fork 永不级联）。
 - `restore`：移回原目录；原路径已被占用时拒绝。
-- `purge`：永久删除，需要配置 `permanentDelete: confirm` 且第二次输入完整 session id。
+- `purge`：CLI 高级恢复路径上的永久删除，需要配置 `permanentDelete: confirm` 且第二次输入完整 session id；GUI 不使用该命令，删除走 bridge `delete`。
 
 ## 安全边界
 
 - **运行中的会话不会被直接删除**：插件会拒绝，或按配置先归档（`stopActivity`）再删除。
 - **删除前必须抢占跨进程写租约**：证明没有其他 DSH 进程正在写同一个会话。
 - **只删会话目录内的文件**：不触碰 `attachments`、其他插件数据或未知文件。
-- **永久删除**默认关闭，开启后要求输入完整 UUID，并展示将级联删除的子会话数量。
+- **删除确认后立即永久删除**：GUI 用确认对话框提示不可恢复；Host 仍先做租约/运行中检查，再移动后立即 purge。CLI 的 `purge` 保留 `permanentDelete` 门禁与完整 id 输入。
 - **fork 不属于血缘**，不会被级联删除。
 
 ## 兼容性
@@ -122,6 +117,6 @@ dsh plugin --profile <profile> remove dsh-session-butler
 ## 链接
 
 - 设计文档：`docs/architecture.md`
-- 决策记录：`docs/decisions.md`（D-029 为当前入口设计）
+- 决策记录：`docs/decisions.md`（D-030 为当前删除/入口设计，取代 D-029 的回收站部分）
 - 调研修正：`research/2026-10-29-research-corrections.md`
 - 发布流程：`docs/publishing.md`

@@ -30,7 +30,19 @@ const MAX_BODY_BYTES = 64 * 1024
 /** Absolute prefix path of the bridge. */
 const ROUTE_PATH = `/${API_PREFIX}`
 
-const METHODS = ['status', 'list', 'detail', 'trash', 'trash-many', 'restore', 'restore-many', 'purge', 'list-trash'] as const
+const METHODS = [
+  'status',
+  'list',
+  'detail',
+  'delete',
+  'delete-many',
+  'trash',
+  'trash-many',
+  'restore',
+  'restore-many',
+  'purge',
+  'list-trash',
+] as const
 type BridgeMethod = (typeof METHODS)[number]
 
 /** A request body that exceeds the body budget. */
@@ -172,6 +184,12 @@ async function dispatch(service: SessionButlerService, method: BridgeMethod, bod
     }
     case 'detail':
       return service.detail(field(body, 'sessionId'))
+    case 'delete':
+      return service.delete(field(body, 'sessionId'), { cascade: booleanField(body, 'cascade', service.config.cascadeSubagents) })
+    case 'delete-many':
+      return service.deleteMany(stringArrayField(body, 'sessionIds'), {
+        cascade: booleanField(body, 'cascade', service.config.cascadeSubagents),
+      })
     case 'trash':
       return service.trash(field(body, 'sessionId'), { cascade: booleanField(body, 'cascade', service.config.cascadeSubagents) })
     case 'trash-many':
