@@ -29,7 +29,7 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2`/`0.2.1` 待 `npm publish`（需 2FA） |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.1`（设置页入口 + 一步删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 65 tests + npm pack 契约）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.1`（设置页入口 + 一步删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 65 tests + npm pack 契约）与 `pnpm run test:e2e`（真实 dsh web 组合 + Playwright）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 还差什么（D3 路线图）
 
@@ -48,6 +48,7 @@ D3 方向在 2026-10-29 被用户二次纠正：**不做 Library/管理台，管
 ```bash
 pnpm install
 pnpm run verify        # typecheck + build + tests + npm pack 契约校验
+pnpm run test:e2e      # 真实 dsh web 组合（L1）+ Playwright 浏览器（L2）
 ```
 
 产物：
@@ -84,6 +85,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 │   ├── host/                    # Host 半：ports/locate/lineage/trash-store/read-model/service/tools/bridge/command
 │   └── client/                  # Client 半：index/settings/menu/plugin-page/bridge/locale/contract
 ├── scripts/                     # build-client / validate-package / clean
+├── e2e/                         # L1 真实组合 + L2 Playwright（临时 DSH_HOME）
 ├── tests/                       # node:test 产物与 manifest 冒烟
 ├── docs/                        # 见下
 └── research/                    # 产品调研（Codex 会话管理）
@@ -94,8 +96,9 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 | 文档 | 内容 |
 |---|---|
 | [`docs/architecture.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
-| [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-030）+ 已收敛问题 + 发布门禁 |
+| [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-031）+ 已收敛问题 + 发布门禁 |
 | [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
+| [`docs/testing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/testing.md) | **验证分层**：65 个单元/契约测试、L1 真实 `dsh web` 组合、L2 Playwright 浏览器、CI e2e job、临时 DSH_HOME 隔离 |
 | [`docs/usage.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
 | [`research/dsh-session-management-v2.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
 | [`research/v2-verification.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/v2-verification.md) | v2 的**独立对抗式复核**：15 条 claim（13 CONFIRMED / 1 WRONG / 1 NEEDS-NUANCE）+ 逐条证据 + 复核限制 |
@@ -116,7 +119,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 
 已定（D3）：**D-029（2026-10-29 二次纠正，取代 D-021/D-022/D-023/D-024 的入口与 Library 部分）** 无会话库、无侧栏按钮；管理入口全部收进 DSH 设置页。**D-030（2026-10-30 三次纠正，取代 D-029 的回收站页与行菜单动作）** 设置页只剩「已归档的聊天 / Threadloom」两项；删除一步完成（Delete permanently / Delete all / 行菜单 Delete chat…），不再有用户可见回收站；底层仍走安全移动管线，CLI 保留 trash/restore/purge。插件页只保留健康/诊断。工具面不变（D-015）。
 
-Q1–Q7 已全部收敛（底层回收站保留期 30 天不自动清理；CLI purge 默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。D-030 后 GUI 删除不再受 `permanentDelete` 门禁。
+Q1–Q7 已全部收敛（底层回收站保留期 30 天不自动清理；CLI purge 默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。D-030 后 GUI 删除不再受 `permanentDelete` 门禁。D-031 接受用户批准的测试分层：L1 真实 `dsh web` 组合 + 一条 L2 Playwright 浏览器主路径，CI 独立 `e2e` job。
 
 ## 命名
 

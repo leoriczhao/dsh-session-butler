@@ -254,6 +254,17 @@
 - **live 验证（2026-10-30 09:50，Client 半页面刷新即热加载）**：设置左栏只剩 **Archived chats / Threadloom** 两项（`docs/evidence/live-settings-nav-0.2.1.png`）；已归档页 7 条仍按项目分组，按钮为 **Unarchive / Delete permanently**，右上 Delete all（`live-settings-archived-0.2.1.png`）；会话行菜单只剩官方项 + **Delete chat…**（`live-row-menu-0.2.1.png`）。
 - **Host 半待重启验证**：新增 `delete`/`delete-many` 需要重启 3080 才加载；重启前 Client 调 delete 会 404（预期）。重启后需实际删除一个临时会话，确认无回收站残留，并补最终截图。
 
+### D-031 测试分层：L1 真实组合 + 一条 L2 浏览器 E2E · accepted（用户 2026-10-31 确认「L1 + 一条 L2」）
+
+- **背景**：用户问是否有端到端测试，并明确「利用那个什么浏览器来着（ai 常用的）」。调研 DSH 官方测试策略（`docs/testing.md`：unit → coverage → real-API e2e → snapshot → Web browser）以及社区插件（dsh-claude-style、dsh-intelligent-ui、dshmarket）的 CI 证据后，发现插件此前只有 65 个单元/契约测试，没有真实 Loader 组合，也没有浏览器路径。
+- **决策**：
+  - **L1**：`e2e/composition.e2e.mjs`，用一次性 `DSH_HOME` + `npm pack` 可发布产物 + 真实 `dsh web` CLI，断言 Client bundle 注入、`/session-butler/api/status`、Host 后端能力、`delete` 路由与空归档列表。
+  - **L2**：`e2e/live-ui.e2e.mjs`，用 Playwright Chromium 打开同一真实 GUI；预置 idle 持久化会话（避免依赖模型 Provider），验证设置页只有 Archived chats / Threadloom、行菜单一步删除、已归档页永久删除、会话目录与回收站零残留。
+  - 不加完整浏览器回归矩阵；L2 只保留一条稳定、可诊断的主路径。CI 单独 `e2e` job；失败时上传截图。
+- **理由**：这两层分别覆盖真实组合边界和真实用户路径，成本可控且不依赖外部 API；再往上是快照/视觉测试，收益低于维护成本。
+- **影响**：新增 `e2e/`、Playwright devDependency、`test:e2e` 脚本与 CI job；测试只用临时 `DSH_HOME`，不读用户真实 `~/.dsh`。运行中会话强删仍由 Host/单元测试与 D-013 约束，不塞进 L2。E2E 先 `npm pack`，因此需要先 build；Playwright 失败截图上传，不加入 `verify`。
+- **文档**：[docs/testing.md](./testing.md)；调研证据 [research/2026-10-31-plugin-testing-benchmark.md](../research/2026-10-31-plugin-testing-benchmark.md)。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |
