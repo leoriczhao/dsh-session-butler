@@ -157,6 +157,24 @@ test('apply registers Codex-style settings sections and no library/nav entries',
   assert.equal(menu.options.order, 470)
 })
 
+test('delete failure guidance is available in English and Chinese', async () => {
+  const plugin = await loadPlugin()
+  const fake = makeContext()
+  plugin.apply(fake.ctx)
+  const english = fake.localeRegistrations.find(entry => entry.language === 'en').dict
+  const chinese = fake.localeRegistrations.find(entry => entry.language === 'zh').dict
+
+  for (const dict of [english, chinese]) {
+    for (const key of ['menu.delete.running', 'menu.delete.locked', 'menu.delete.failed']) {
+      assert.match(dict[key], /\{title\}/, key)
+    }
+  }
+  assert.match(english['menu.delete.running'], /still in use/i)
+  assert.match(chinese['menu.delete.running'], /仍在使用中/)
+  assert.match(english['menu.delete.failed'], /could not confirm whether/i)
+  assert.match(chinese['menu.delete.failed'], /无法确认.*是否已删除/)
+})
+
 test('each slot registers only after its own declaration', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext({ immediateInjection: false })

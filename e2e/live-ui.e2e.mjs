@@ -11,7 +11,7 @@
  * agent turn. Everything else runs through the real Web server and GUI.
  */
 import assert from 'node:assert/strict'
-import { mkdir, readdir } from 'node:fs/promises'
+import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import test from 'node:test'
@@ -137,6 +137,105 @@ async function deleteFromRowMenu(page, session) {
   assert.match(confirmation, /permanently deleted/i)
 }
 
+/** Exercise a rejected delete through the actual row menu without changing Host data. */
+async function expectRowDeleteFailure(page, home, session, failure, expectedMessage) {
+  const requests = []
+  const dialogs = []
+  const intercept = async route => {
+    requests.push(route.request().postDataJSON())
+    if (failure === null) {
+      await route.abort('failed')
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: failure }),
+      })
+    }
+  }
+  const handleDialog = async dialog => {
+    const record = { type: dialog.type(), message: dialog.message(), accepted: false }
+    dialogs.push(record)
+    await dialog.accept()
+    record.accepted = true
+  }
+  await page.route('**/session-butler/api/delete', intercept)
+  page.on('dialog', handleDialog)
+  try {
+    await openRowMenu(page, session)
+    await page.getByRole('menuitem', { name: /Delete chat/ }).click()
+    await waitFor(() => dialogs.some(dialog => dialog.type === 'alert')
+      && dialogs.every(dialog => dialog.accepted), {
+      timeout: 5_000, label: 'visible delete failure',
+    })
+    assert.deepEqual(dialogs.map(dialog => dialog.type), ['confirm', 'alert'])
+    assert.match(dialogs[0].message, /permanently deleted/i)
+    assert.match(dialogs[1].message, expectedMessage)
+    await page.locator(`[data-row-key="session:${session.id}"]`).waitFor({ state: 'visible' })
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].sessionId, session.id)
+    assert.ok((await listSessions(page)).sessions.some(entry => entry.id === session.id))
+    assert.equal(await hasSessionDirectory(home, session.id), true)
+  } finally {
+    page.off('dialog', handleDialog)
+    await page.unroute('**/session-butler/api/delete', intercept)
+  }
+}
+
+/** Cause a real Host preflight failure in the disposable profile, then remove it. */
+async function expectRealDeleteFailure(page, home, session) {
+  const sessionsRoot = join(home, 'sessions')
+  const projects = await readdir(sessionsRoot, { withFileTypes: true })
+  const matches = []
+  for (const project of projects) {
+    if (!project.isDirectory()) continue
+    const entries = await readdir(join(sessionsRoot, project.name))
+    if (entries.includes(session.id)) matches.push(project.name)
+  }
+  assert.equal(matches.length, 1, 'find the seeded session directory')
+  const projectTrash = join(home, 'session-butler', 'trash', matches[0])
+  const conflict = join(projectTrash, session.id + '.json')
+  await mkdir(projectTrash, { recursive: true })
+  await writeFile(conflict, '{}', { flag: 'wx' })
+
+  const dialogs = []
+  const handleDialog = async dialog => {
+    const record = { type: dialog.type(), message: dialog.message(), accepted: false }
+    dialogs.push(record)
+    await dialog.accept()
+    record.accepted = true
+  }
+  page.on('dialog', handleDialog)
+  try {
+    await openRowMenu(page, session)
+    const responsePromise = page.waitForResponse(response =>
+      response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/session-butler/api/delete'))
+    const [, response] = await Promise.all([
+      page.getByRole('menuitem', { name: /Delete chat/ }).click(),
+      responsePromise,
+    ])
+    const body = await response.json()
+    assert.equal(response.status(), 200)
+    assert.equal(response.request().postDataJSON().sessionId, session.id)
+    assert.equal(body.ok, false)
+    assert.equal(body.error.code, 'trash-conflict')
+    await waitFor(() => dialogs.some(dialog => dialog.type === 'alert')
+      && dialogs.every(dialog => dialog.accepted), {
+      timeout: 5_000, label: 'visible Host delete failure',
+    })
+    assert.deepEqual(dialogs.map(dialog => dialog.type), ['confirm', 'alert'])
+    assert.match(dialogs[0].message, /permanently deleted/i)
+    assert.match(dialogs[1].message, /could not confirm whether.*was deleted/i)
+    await page.locator(`[data-row-key="session:${session.id}"]`).waitFor({ state: 'visible' })
+    assert.ok((await listSessions(page)).sessions.some(entry => entry.id === session.id))
+    assert.equal(await hasSessionDirectory(home, session.id), true)
+  } finally {
+    page.off('dialog', handleDialog)
+    await unlink(conflict)
+  }
+}
+
 async function archiveFromRowMenu(page, session) {
   await openRowMenu(page, session)
   await page.getByRole('menuitem', { name: /Archive session/ }).click()
@@ -207,6 +306,19 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
         page.locator(`[data-row-key="session:${session.id}"]`).count()))
       return counts.every(count => count === 1)
     }, { timeout: 20_000, interval: 500, label: 'seeded sessions in the sidebar' })
+
+    // A rejected request must be visible after the row menu closes, and retryable.
+    await expectRowDeleteFailure(page, fixture.home, alpha, {
+      code: 'session-running',
+      message: 'session is still running after stop was requested',
+    }, /still in use/i)
+    await expectRowDeleteFailure(page, fixture.home, alpha, {
+      code: 'session-locked',
+      message: 'session is held by another writer',
+    }, /in use by another process/i)
+    await expectRowDeleteFailure(page, fixture.home, alpha, null,
+      /could not confirm whether.*was deleted/i)
+    await expectRealDeleteFailure(page, fixture.home, alpha)
 
     // D-030 one-step delete from the session row menu, with no trash residue.
     await deleteFromRowMenu(page, alpha)

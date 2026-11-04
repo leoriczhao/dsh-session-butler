@@ -11,7 +11,7 @@
 
 import type { ReactElement } from 'react'
 
-import { callBridge } from './bridge.js'
+import { BridgeError, callBridge } from './bridge.js'
 import type { ClientConfigLike, ConfigFormLike } from './contract.js'
 import { inlineMenuEnabledFromConfig } from './settings.js'
 
@@ -43,6 +43,15 @@ export function ThreadloomDeleteMenuItem(props: DeleteMenuItemProps): ReactEleme
       () => { refreshSessions?.() },
       (error: unknown) => {
         console.error('dsh-session-butler: delete from the row menu failed', error)
+        // A failed response may follow a partial delete, or the response may
+        // have been lost. Reconcile the sidebar before the user checks it.
+        refreshSessions?.()
+        if (typeof window === 'undefined' || typeof window.alert !== 'function') return
+        const code = error instanceof BridgeError ? error.code : undefined
+        const key = code === 'session-running'
+          ? 'menu.delete.running'
+          : code === 'session-locked' ? 'menu.delete.locked' : 'menu.delete.failed'
+        window.alert(t(key, { title: displayTitle }))
       },
     )
   }

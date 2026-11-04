@@ -60,7 +60,7 @@ Threadloom 属于 **产品可见 UI + 破坏性文件操作 + Host/Client 双半
 
 1. **没有真实 DSH 组合**：`cordis-mount.test.mjs` 用的是空 `Context`，不是真实 Loader/profile/bootstrap；bundle 是否被 DSH 发现、`settings.section` 是否注入到真实设置 shell、bridge 路由是否被真实 web server 接受，都没有自动断言。→ **已补（L1）**。
 2. **没有真实浏览器 E2E**：设置页入口、已归档删除、行菜单删除、删除后文件消失，目前靠手动 Playwright + 截图；不可重复、CI 不可见。→ **已补一条主路径（L2）**。
-3. **手动 E2E 已经抓到真实 bug**：2026-10-30 的验证里，运行中会话点击“删除聊天…”时，Host 返回 `session-running`，而 Client 只 `console.error`，用户界面没有任何提示；这类“交互后静默失败”只有真实组合/浏览器测试容易暴露。→ **仍未修复**；L2 使用 idle 会话，不把运行中 settle 的时序不确定性带进 CI，该错误路径目前只由 Host 单测覆盖。
+3. **手动 E2E 已经抓到真实 bug**：2026-10-30 的验证里，运行中会话点击“删除聊天…”时，Host 返回 `session-running`，而 Client 只 `console.error`，用户界面没有任何提示；这类“交互后静默失败”只有真实组合/浏览器测试容易暴露。→ **2026-11-04 已修复提示**；L2 模拟 `session-running` 响应来验证提示，并用真实 Host 的存储冲突验证失败链路。真实运行中会话的 settle 时序仍由 Host 单测覆盖。
 
 ## 4. 建议的测试流程（由轻到重）
 
@@ -92,7 +92,7 @@ Threadloom 属于 **产品可见 UI + 破坏性文件操作 + Host/Client 双半
 - **与建议的偏差**：
   - L2 没有接脚本化 LLM，改为写入 Host 同格式的 **idle 持久化会话**。目标路径是设置页/行菜单/删除，不需要模型；这样 CI 不依赖模型路由时序，也不需要维护 mock provider。代价是未覆盖“新建会话 → 首次标题”的模型路径。
   - L2 使用 `npm pack --ignore-scripts` 后解压到临时 profile，而不是 `dsh plugin add` 从 registry 安装；这已覆盖发布 tarball 的 `files` 闭包与构建产物，registry 安装仍由现有发布 runbook 覆盖。
-- **仍未覆盖**：运行中会话行菜单删除失败时的用户可见错误（上面第 3 项）；需要单独的浏览器场景或 Client 交互测试。
+- **2026-11-04 补充**：行菜单删除失败后会显示提示并刷新侧栏；L2 覆盖模拟的运行中/占用/网络失败，以及真实 Host 的存储冲突与重试。未在浏览器中启动真实运行中的会话。
 - **运行约定**：先 `pnpm run build`（E2E fixture 会检查 `lib/client.js`），首次安装 Playwright Chromium；详见 [docs/testing.md](../docs/testing.md)。
 
 ## 6. 参考链接

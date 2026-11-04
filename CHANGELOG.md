@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — 会话行删除失败提示（2026-11-04）
+
+- 会话行删除失败后显示中英文提示；会话仍在使用或被其他进程占用时给出处理建议，其他失败提示先检查聊天列表，并刷新侧栏状态。
+- Playwright 覆盖模拟的运行中、占用和网络失败，以及真实 Host 存储冲突后的提示、会话保留和成功重试。
+
 ### Added — D3.0: 与 DSH 插件管理集成 + 功能级健康快照 (2026-10-28)
 
 - **配置表单**：配置字段全部声明为 DSH `.volatile()`，Plugins 页的插件行出现「配置」入口，`plugins.row.config` 渲染表单并写回 profile patch（单源，无第二配置存储）。新增 `liveSettleTimeoutMs`（默认 3000）与 `inlineMenuEnabled`（默认 true）。

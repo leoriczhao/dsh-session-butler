@@ -29,7 +29,7 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
 | 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2`/`0.2.1` 待 `npm publish`（需 2FA） |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.1`（设置页入口 + 一步删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 65 tests + npm pack 契约）与 `pnpm run test:e2e`（真实 dsh web 组合 + Playwright）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.1`（设置页入口 + 一步删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 66 tests + npm pack 契约）与 `pnpm run test:e2e`（真实 dsh web 组合 + Playwright）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 还差什么（D3 路线图）
 
@@ -38,7 +38,7 @@ D3 方向在 2026-10-29 被用户二次纠正：**不做 Library/管理台，管
 | 阶段 | 缺口 |
 |---|---|
 | 发布 | `0.2.1` 尚未 `npm publish`（2FA）；本地提交未 push |
-| D3.1 设置页完善 | 已归档列表分页/workspace 筛选、临时删除的 undo toast（替代原生 confirm）、设置分区图标（DSH 只对内置 id 映射图标）、live 会话/句柄的失败提示打磨 |
+| D3.1 设置页完善 | 已归档列表分页/workspace 筛选、临时删除的 undo toast（替代原生 confirm）、设置分区图标（DSH 只对内置 id 映射图标）、live 会话/句柄删除的兼容性 |
 | D3.2 组织与生命周期 | CLI 回收站保留期审计与过期提示、行菜单删除的 toast/撤销体验（当前原生 confirm） |
 | D3.3 增强 | 设置页内的搜索/筛选状态记忆、CLI 恢复入口文档化、i18n 补全（设置页两分区已中英） |
 | 明确非目标 | 跨 workspace 移动（D-012）、自动永久删除、运行中会话强删（D-013）、会话库/独立管理面板（D-029） |
@@ -98,7 +98,7 @@ dsh --profile tl-web --port 3099 --no-open                      # 打开打印�
 | [`docs/architecture.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
 | [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-031）+ 已收敛问题 + 发布门禁 |
 | [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
-| [`docs/testing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/testing.md) | **验证分层**：65 个单元/契约测试、L1 真实 `dsh web` 组合、L2 Playwright 浏览器、CI e2e job、临时 DSH_HOME 隔离 |
+| [`docs/testing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/testing.md) | **验证分层**：66 个单元/契约测试、L1 真实 `dsh web` 组合、L2 Playwright 浏览器、CI e2e job、临时 DSH_HOME 隔离 |
 | [`docs/usage.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
 | [`research/dsh-session-management-v2.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
 | [`research/v2-verification.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/v2-verification.md) | v2 的**独立对抗式复核**：15 条 claim（13 CONFIRMED / 1 WRONG / 1 NEEDS-NUANCE）+ 逐条证据 + 复核限制 |

@@ -2,7 +2,7 @@
 
 Threadloom 的验证分三层：第一层是每次提交的默认门禁（`pnpm run verify`），第二、三层在 CI 的独立 `e2e` job 中运行；两层 E2E 都使用真实 `dsh web` 进程，不伪造 Cordis Context。
 
-## 1. 单元与契约测试（65 个）
+## 1. 单元与契约测试（66 个）
 
 ```bash
 pnpm test          # node:test，tests/*.test.mjs
@@ -40,10 +40,11 @@ pnpm run verify    # typecheck + clean + build + test + npm pack 契约校验
 - 打开账号菜单 → Settings，断言左栏包含 **Archived chats** 与 **Threadloom**，且没有 Trash / 回收站或会话库入口；
 - 打开两个设置分区，检查 Archived chats 页面可渲染，Threadloom 设置页出现两个数字配置输入；
 - 两个 workspace 的会话行都出现在侧栏；
+- 模拟桥返回 `session-running`、`session-locked` 和网络中断，验证关闭行菜单后仍会弹出对应提示；再通过临时存储冲突触发真实 Host 错误，确认会话仍在并可重试；
 - 在 alpha 会话行点 "`...`" → `Delete chat…`，接受一次浏览器确认，断言 bridge 列表删除、会话目录消失、`trashCount === 0`；
 - 在 beta 会话行点 "`...`" → `Archive session`，进入 Settings → Archived chats，点 `Delete permanently`，确认后同样断言 bridge 列表、会话目录与回收站。
 
-> L2 不覆盖运行中会话的强删：D-013 明确运行中先停止、等待 settle，失败会返回 `session-running`。该分支由 Host/单元测试覆盖，避免 E2E 依赖真实模型。
+> L2 对运行中/占用的错误提示使用模拟 bridge 响应；真实 Host 的错误链路使用存储冲突覆盖。浏览器测试不启动真实模型或运行中的会话；Host 停止和等待 settle 的行为仍由单元测试覆盖。
 
 ## 本地运行
 
