@@ -58,7 +58,7 @@ export interface SessionButlerOptions {
   readonly cascadeSubagents: boolean | (() => boolean)
   readonly permanentDelete: 'disabled' | 'confirm' | (() => 'disabled' | 'confirm')
   readonly now?: () => number
-  /** How long to wait for `stopActivity` before refusing a running-session delete. */
+  /** How long to wait for a loaded session to be released before refusing deletion. */
   readonly liveSettleTimeoutMs?: number | (() => number)
   /** Installed package version, shown in the health snapshot. */
   readonly pluginVersion?: string
@@ -721,51 +721,36 @@ export class SessionButlerService {
     if (migrationBlocked.length > 0) throw migrationError(migrationBlocked)
 
     const records: SessionRecordLike[] = [rootRecord, ...descendants]
-    const archived: string[] = []
-    let succeeded = false
+    for (const record of records) await this.waitForRelease(record.header.id)
+    for (const record of records) await this.probeLease(record.header.id)
+    const located = await this.locator.locateAll(records)
+    for (const target of located) await this.trashStore.assertFree(target)
+
+    const deletedAt = this.now()
+    const descendantIds = descendants.map(record => record.header.id)
+    const moved: TrashEntry[] = []
     try {
-      for (const record of records) await this.settleRunning(record.header.id, archived)
-      for (const record of records) await this.probeLease(record.header.id)
-      const located = await this.locator.locateAll(records)
-      for (const target of located) await this.trashStore.assertFree(target)
-
-      const deletedAt = this.now()
-      const descendantIds = descendants.map(record => record.header.id)
-      const moved: TrashEntry[] = []
-      try {
-        for (const target of located) {
-          const isRoot = target.id === sessionId
-          moved.push(await this.trashStore.moveIn(target, {
-            deletedAt,
-            ...(isRoot ? {} : { cascadeOf: sessionId }),
-            descendants: isRoot ? descendantIds : [],
-          }))
-        }
-      } catch (error) {
-        for (const entry of [...moved].reverse()) {
-          try {
-            await this.trashStore.moveOut(entry)
-          } catch {
-            // Rollback is best-effort; the original failure stays authoritative.
-          }
-        }
-        throw error
+      for (const target of located) {
+        const isRoot = target.id === sessionId
+        moved.push(await this.trashStore.moveIn(target, {
+          deletedAt,
+          ...(isRoot ? {} : { cascadeOf: sessionId }),
+          descendants: isRoot ? descendantIds : [],
+        }))
       }
-
-      for (const target of located) await this.clearWorkspaceState(target.id)
-      succeeded = true
-      return { trashed: located.map(target => target.id), trashRoot: this.options.trashRoot }
-    } finally {
-      if (!succeeded) {
-        for (const id of archived) {
-          try {
-            await this.workspace?.unarchiveSession(id)
-          } catch {
-            // Best-effort state restoration after a failed trash.
-          }
+    } catch (error) {
+      for (const entry of [...moved].reverse()) {
+        try {
+          await this.trashStore.moveOut(entry)
+        } catch {
+          // Rollback is best-effort; the original failure stays authoritative.
         }
       }
+      throw error
     }
+
+    for (const target of located) await this.clearWorkspaceState(target.id)
+    return { trashed: located.map(target => target.id), trashRoot: this.options.trashRoot }
   }
 
   /**
@@ -886,40 +871,29 @@ export class SessionButlerService {
     return this.sessions?.get(sessionId) !== undefined || this.agents?.get(sessionId) !== undefined
   }
 
-  /**
-   * Stop running work and wait for it to settle (D-013). Without workspace
-   * services a running session is refused outright.
-   * @param archived - collects ids this call archived, for failure rollback.
-   */
-  private async settleRunning(sessionId: string, archived: string[]): Promise<void> {
-    if (!this.isLive(sessionId)) return
-    const workspace = this.workspace
-    if (workspace === undefined) {
-      throw new ButlerError(
-        'session-running',
-        `session "${sessionId}" is running and this composition provides no workspace service to stop it; stop it first`,
-        { details: { sessionId } },
-      )
+  /** Wait for the owning DSH component to release a loaded Session or Agent. */
+  private async waitForRelease(sessionId: string): Promise<void> {
+    const deadline = Date.now() + this.liveSettleTimeoutMs
+    while (this.isLive(sessionId)) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      // Do not archive, stop, or dispose someone else's live Agent. Those
+      // operations do not release its writer and can discard ongoing work.
+      await sleep(Math.min(100, remaining))
     }
-    try {
-      await workspace.archiveSession(sessionId, { stopActivity: true })
-      archived.push(sessionId)
-    } catch (error) {
-      throw new ButlerError('session-running', `cannot stop running session "${sessionId}"`, {
-        details: { sessionId },
-        cause: error,
-      })
-    }
-    const settleTimeoutMs = this.liveSettleTimeoutMs
-    const attempts = Math.max(1, Math.ceil(settleTimeoutMs / 100))
-    for (let attempt = 0; attempt < attempts && this.isLive(sessionId); attempt += 1) {
-      await sleep(100)
-    }
-    if (this.isLive(sessionId)) {
-      throw new ButlerError('session-running', `session "${sessionId}" is still running after stop was requested`, {
+    const session = this.sessions?.get(sessionId)
+    const agent = this.agents?.get(sessionId) as LiveAgentLike | undefined
+    if (session === undefined && agent === undefined) return
+    if (agent?.status === 'running') {
+      throw new ButlerError('session-running', `session "${sessionId}" is still running; stop its activity before retrying`, {
         details: { sessionId },
       })
     }
+    throw new ButlerError(
+      'session-in-use',
+      `session "${sessionId}" remains loaded in this DSH process; release it before retrying`,
+      { details: { sessionId } },
+    )
   }
 
   /** Take and release the cross-process write lease once, as a writer probe. */
@@ -928,18 +902,19 @@ export class SessionButlerService {
     try {
       handle = await this.options.persistence.open(sessionId, 'write')
     } catch (error) {
-      throw new ButlerError('session-locked', `session "${sessionId}" is held by another writer`, {
-        details: { sessionId },
-        cause: error,
-      })
+      if (error !== null && typeof error === 'object'
+        && (error as { name?: unknown }).name === 'SessionAlreadyOwnedError') {
+        throw new ButlerError('session-locked', `session "${sessionId}" is held by another writer`, {
+          details: { sessionId },
+          cause: error,
+        })
+      }
+      throw asButlerError(error, 'internal', `cannot inspect write ownership for "${sessionId}"`)
     }
     try {
       await handle.close()
     } catch (error) {
-      throw new ButlerError('session-locked', `cannot release the write probe for "${sessionId}"`, {
-        details: { sessionId },
-        cause: error,
-      })
+      throw asButlerError(error, 'internal', `cannot release the write probe for "${sessionId}"`)
     }
   }
 

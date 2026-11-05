@@ -37,7 +37,7 @@ function makeConfigForm(value) {
  * Fake Client context capturing locale/slot registrations and their cleanup.
  * `immediateInjection: false` keeps every inject callback for late binding.
  */
-function makeContext({ immediateInjection = true, configValue } = {}) {
+function makeContext({ immediateInjection = true, configValue, language = 'zh' } = {}) {
   const localeRegistrations = []
   const localeCleanups = []
   const slotRegistrations = []
@@ -59,7 +59,7 @@ function makeContext({ immediateInjection = true, configValue } = {}) {
         return () => { localeCleanups.push(namespace + ':' + language) }
       },
       bind(namespace) {
-        const dict = localeRegistrations.find(entry => entry.namespace === namespace && entry.language === 'zh')?.dict ?? {}
+        const dict = localeRegistrations.find(entry => entry.namespace === namespace && entry.language === language)?.dict ?? {}
         return (key, vars) => {
           let text = dict[key] ?? key
           for (const [name, value] of Object.entries(vars ?? {})) text = text.split('{' + name + '}').join(String(value))
@@ -111,16 +111,6 @@ function makeContext({ immediateInjection = true, configValue } = {}) {
   }
 }
 
-/** Bind the Chinese dictionary for direct component rendering. */
-function zhTranslator(fake) {
-  const dict = fake.localeRegistrations.find(entry => entry.language === 'zh').dict
-  return (key, vars) => {
-    let text = dict[key] ?? key
-    for (const [name, value] of Object.entries(vars ?? {})) text = text.split('{' + name + '}').join(String(value))
-    return text
-  }
-}
-
 test('apply registers Codex-style settings sections and no library/nav entries', async () => {
   const plugin = await loadPlugin()
   assert.deepEqual([...plugin.inject].sort(), ['locale', 'sessions', 'slots', 'uiWorkspace'])
@@ -165,12 +155,16 @@ test('delete failure guidance is available in English and Chinese', async () => 
   const chinese = fake.localeRegistrations.find(entry => entry.language === 'zh').dict
 
   for (const dict of [english, chinese]) {
-    for (const key of ['menu.delete.running', 'menu.delete.locked', 'menu.delete.failed']) {
+    for (const key of ['menu.delete.running', 'menu.delete.inUse', 'menu.delete.locked', 'menu.delete.failed']) {
       assert.match(dict[key], /\{title\}/, key)
     }
   }
   assert.match(english['menu.delete.running'], /still in use/i)
   assert.match(chinese['menu.delete.running'], /仍在使用中/)
+  assert.match(english['menu.delete.inUse'], /restart DSH/i)
+  assert.match(chinese['menu.delete.inUse'], /重启 DSH/)
+  assert.match(english['menu.delete.body'], /subagent/i)
+  assert.match(chinese['menu.delete.body'], /子代理/)
   assert.match(english['menu.delete.failed'], /could not confirm whether/i)
   assert.match(chinese['menu.delete.failed'], /无法确认.*是否已删除/)
 })
@@ -235,28 +229,35 @@ test('the config page renders the four plugin fields in Settings', async () => {
   const html = renderToStaticMarkup(React.createElement(section.component, { close() {} }))
   assert.match(html, /Threadloom 设置/)
   assert.match(html, /回收站保留天数/)
-  assert.match(html, /运行中会话等待超时/)
+  assert.match(html, /等待会话释放超时/)
   assert.match(html, /级联删除子代理会话/)
   assert.match(html, /会话行菜单动作/)
   assert.doesNotMatch(html, /永久删除/)
 })
 
-test('the row menu exposes only the delete action and follows the switch', async () => {
+test('the row menu matches host delete icon and session labels in both languages', async () => {
   const plugin = await loadPlugin()
-  const fake = makeContext()
-  plugin.apply(fake.ctx)
-  const menu = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
   const props = {
     sessionId: 'session-a',
     displayTitle: 'alpha',
     useMenuOpenState: () => [false, () => {}],
-    t: zhTranslator(fake),
   }
-  const html = renderToStaticMarkup(React.createElement(menu.component, props))
-  assert.match(html, /删除聊天/)
-  assert.doesNotMatch(html, /回收站/)
-  assert.doesNotMatch(html, /会话库/)
-  assert.doesNotMatch(html, /会话详情/)
+
+  for (const [language, label] of [['zh', '删除会话'], ['en', 'Delete session']]) {
+    const fake = makeContext({ language })
+    plugin.apply(fake.ctx)
+    const menu = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
+    const html = renderToStaticMarkup(React.createElement(menu.component, props))
+    const button = html.match(/<button[^>]*role="menuitem"[^>]*>.*?<\/button>/)?.[0]
+    assert.ok(button, `${language} row renders a menu item`)
+    assert.equal((html.match(/role="menuitem"/g) ?? []).length, 1)
+    assert.doesNotMatch(html, /回收站|会话库|会话详情/)
+    assert.match(button, /<svg[^>]*width="14"[^>]*height="14"[^>]*viewBox="0 0 16 16"[^>]*aria-hidden="true"/)
+    assert.match(button, /stroke="currentColor"/)
+    assert.match(button, /M1\.28149 3\.88831H14\.7187/)
+    assert.equal((button.match(/<path /g) ?? []).length, 5)
+    assert.ok(button.endsWith(`</svg>${label}</button>`))
+  }
 
   const disabled = makeContext({ configValue: { inlineMenuEnabled: false } })
   plugin.apply(disabled.ctx)

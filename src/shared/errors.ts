@@ -12,6 +12,7 @@
 export type ButlerErrorCode =
   | 'session-not-found'
   | 'session-running'
+  | 'session-in-use'
   | 'session-locked'
   | 'session-migration-required'
   | 'session-unresolved-path'

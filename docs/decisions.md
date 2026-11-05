@@ -265,6 +265,13 @@
 - **影响**：新增 `e2e/`、Playwright devDependency、`test:e2e` 脚本与 CI job；测试只用临时 `DSH_HOME`，不读用户真实 `~/.dsh`。运行中会话强删仍由 Host/单元测试与 D-013 约束，不塞进 L2。E2E 先 `npm pack`，因此需要先 build；Playwright 失败截图上传，不加入 `verify`。
 - **文档**：[docs/testing.md](./testing.md)；调研证据 [research/2026-10-31-plugin-testing-benchmark.md](../research/2026-10-31-plugin-testing-benchmark.md)。
 
+### D-032 已加载会话：只等待宿主释放，不主动停止或归档 · accepted
+
+- **背景**：2026-11-06 实测，已完成回合的会话仍可能被 DSH 作为 idle Agent 持有写句柄。`archiveSession({ stopActivity: true })` 请求停止活动，却不会释放 Agent/Session 的所有者句柄；调用后仍拒绝删除，且可能取消工作或改变归档、置顶状态。
+- **决策**：删除前等待 `liveSettleTimeoutMs`，只观察宿主是否自行释放 Session/Agent，不主动停止、归档或销毁它们。超时后，仍在运行返回 `session-running`，其他已加载状态返回 `session-in-use`；界面提示用户停止活动或安全重启持有它的 DSH 实例。保留跨进程写租约探测。
+- **范围**：取代 D-005/D-013 的自动归档停止部分。写租约探测是瞬时检查，不是覆盖整个删除过程的跨进程事务；冷父会话的外部活动与并发重新打开也不能由插件完全排除。完整的已加载会话删除需要 DSH 提供由所有者协调的释放和删除事务。
+- **验证**：单测覆盖已加载/运行中会话拒绝时不改变归档、置顶和工作，及持有者自行释放后重试；Playwright 在隔离 DSH 中复现 idle 已加载、拒绝、重启后删除。
+
 ## 待确认问题（发布前必须收敛）
 
 | # | 问题 | 建议默认 |

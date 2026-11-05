@@ -11,7 +11,7 @@
 
 import type { ReactElement } from 'react'
 
-import { BridgeError, callBridge } from './bridge.js'
+import { callBridge, deleteErrorKey } from './bridge.js'
 import type { ClientConfigLike, ConfigFormLike } from './contract.js'
 import { inlineMenuEnabledFromConfig } from './settings.js'
 
@@ -28,7 +28,7 @@ export interface DeleteMenuItemProps {
   readonly refreshSessions?: () => void
 }
 
-/** "Delete chat" row: confirm once, then permanently delete and refresh the list. */
+/** "Delete session" row: confirm once, then permanently delete and refresh the list. */
 export function ThreadloomDeleteMenuItem(props: DeleteMenuItemProps): ReactElement | null {
   const { sessionId, displayTitle, useMenuOpenState, t, configForm, refreshSessions } = props
   const [, setMenuOpen] = useMenuOpenState()
@@ -47,11 +47,7 @@ export function ThreadloomDeleteMenuItem(props: DeleteMenuItemProps): ReactEleme
         // have been lost. Reconcile the sidebar before the user checks it.
         refreshSessions?.()
         if (typeof window === 'undefined' || typeof window.alert !== 'function') return
-        const code = error instanceof BridgeError ? error.code : undefined
-        const key = code === 'session-running'
-          ? 'menu.delete.running'
-          : code === 'session-locked' ? 'menu.delete.locked' : 'menu.delete.failed'
-        window.alert(t(key, { title: displayTitle }))
+        window.alert(t(deleteErrorKey(error), { title: displayTitle }))
       },
     )
   }
@@ -59,6 +55,14 @@ export function ThreadloomDeleteMenuItem(props: DeleteMenuItemProps): ReactEleme
     <>
       <style>{MENU_CSS}</style>
       <button type="button" role="menuitem" className="sb-menu-item sb-menu-danger" onClick={remove}>
+        {/* Matches the host's IconTrashOutlineRegular artwork and menu icon size. */}
+        <svg className="sb-menu-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true" focusable="false">
+          <path d="M1.28149 3.88831H14.7187" />
+          <path d="M5.41602 3.88833V2.47962C5.41602 2.29282 5.52492 2.11366 5.71876 1.98157C5.9126 1.84948 6.17551 1.77527 6.44964 1.77527H9.55053C9.82466 1.77527 10.0876 1.84948 10.2814 1.98157C10.4753 2.11366 10.5842 2.29282 10.5842 2.47962V3.88833" />
+          <path d="M2.57349 3.88831L3.19366 13.2943C3.21937 13.5502 3.33952 13.7872 3.53065 13.9593C3.72178 14.1313 3.97016 14.2259 4.22729 14.2246H11.7728C12.0299 14.2259 12.2783 14.1313 12.4694 13.9593C12.6605 13.7872 12.7807 13.5502 12.8064 13.2943L13.4266 3.88831" />
+          <path d="M6.44946 6.98926V11.1238" />
+          <path d="M9.55054 6.98926V11.1238" />
+        </svg>
         {t('menu.delete')}
       </button>
     </>
@@ -71,4 +75,5 @@ const MENU_CSS = [
   '@media (hover:hover){.sb-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.12))}}',
   '.sb-menu-item:focus-visible{outline:none;background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.12))}',
   '.sb-menu-danger{color:var(--dsw-alias-state-error-primary,#b43c3c)}',
+  '.sb-menu-icon{flex:none}',
 ].join('')

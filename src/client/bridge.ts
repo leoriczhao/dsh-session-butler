@@ -25,6 +25,15 @@ export class BridgeError extends Error {
   }
 }
 
+/** Select actionable, localized guidance for a failed session deletion. */
+export function deleteErrorKey(error: unknown): string {
+  const code = error instanceof BridgeError ? error.code : undefined
+  if (code === 'session-running') return 'menu.delete.running'
+  if (code === 'session-in-use') return 'menu.delete.inUse'
+  if (code === 'session-locked') return 'menu.delete.locked'
+  return 'menu.delete.failed'
+}
+
 /** One wire envelope. */
 interface Envelope {
   readonly ok: boolean

@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 
-import { callBridge } from './bridge.js'
+import { callBridge, deleteErrorKey } from './bridge.js'
 import type {
   ClientConfigLike,
   ConfigFormLike,
@@ -226,7 +226,11 @@ export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
       setNotice(t('archived.deleted', { title: row.title ?? shortId(row.id) }))
       refreshSessions?.()
     } catch (reason) {
-      setError(messageOf(reason))
+      const key = deleteErrorKey(reason)
+      setError(key === 'menu.delete.failed'
+        ? messageOf(reason)
+        : t(key, { title: row.title ?? shortId(row.id) }))
+      refreshSessions?.()
     } finally {
       setBusy(null)
     }

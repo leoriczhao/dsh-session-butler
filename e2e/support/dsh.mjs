@@ -121,8 +121,10 @@ async function writeSeededSession(home, { id, cwd, title }) {
     { type: 'sandbox/mode', seq: 1, time: now, data: { mode: 'workspace-write' } },
     { type: 'approval/policy', seq: 2, time: now, data: { policy: 'ask' } },
     { type: 'session/end-seed', seq: 3, time: now, data: {} },
+    { type: 'turn/start', seq: 4, time: now, data: { turn: 1 } },
+    { type: 'step/start', seq: 5, time: now, data: { turn: 1, step: 1 } },
     {
-      type: 'user/message', seq: 4, time: now,
+      type: 'user/message', seq: 6, time: now,
       data: {
         content: [{ type: 'text', text: title }],
         source: { kind: 'user', rpcId: randomUUID() },
@@ -130,7 +132,9 @@ async function writeSeededSession(home, { id, cwd, title }) {
       },
       surfaceOp: 'append',
     },
-    { type: 'session/title', seq: 5, time: now, data: { title, messageSeqs: [4], source: { kind: 'fallback' } } },
+    { type: 'step/end', seq: 7, time: now, data: { turn: 1, step: 1 } },
+    { type: 'turn/end', seq: 8, time: now, data: { turn: 1, reason: { kind: 'completed' } } },
+    { type: 'session/title', seq: 9, time: now, data: { title, messageSeqs: [6], source: { kind: 'fallback' } } },
   ]
   const dir = join(home, 'sessions', projectKey(cwd), encodeSegment(id))
   await mkdir(dir, { recursive: true })

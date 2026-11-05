@@ -46,8 +46,8 @@ export interface ThreadloomConfig {
    */
   permanentDelete: Volatile<'disabled' | 'confirm'>
   /**
-   * How long to wait for a running session to stop after archiving it, before a
-   * trash request is refused. Used by D-013's stop-then-settle pipeline.
+   * How long to wait for the owner of a loaded session to release it before a
+   * delete request is refused. Threadloom does not stop or archive the session.
    */
   liveSettleTimeoutMs: Volatile<number>
   /**
@@ -92,7 +92,7 @@ export const Config = z.object({
     .max(120_000)
     .default(3_000)
     .description(
-      'Milliseconds to wait for a running session to stop after archiving it before refusing the trash request.',
+      'Milliseconds to wait for a loaded session to be released before refusing deletion. The plugin does not stop the session.',
     )
     .volatile(),
   inlineMenuEnabled: z

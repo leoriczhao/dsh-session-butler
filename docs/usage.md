@@ -8,7 +8,7 @@
 
 - **设置 → 已归档的聊天**：列出从侧栏归档的会话，支持搜索、按项目分组、**取消归档**、**永久删除**、**全部删除**（与 ChatGPT 桌面端「设置 → 已归档的聊天」一致）；
 - **设置 → Threadloom**：插件配置（级联、删除等待、行菜单开关等 4 个字段），保存即生效；
-- **会话行 "..." 菜单 → 删除聊天…**：活动会话的快捷永久删除（带确认，可配置关闭）；
+- **会话行 "..." 菜单 → 删除会话**：侧栏会话的快捷永久删除（带确认，可配置关闭）；
 - **Agent 工具**：`session_butler_list` / `session_butler_detail` / `session_butler_new` / `session_butler_fork`（删除等破坏性写操作不进入工具面，D-003/D-015）；
 - **命令**：`/session-butler list|trash|restore|purge`（CLI 保留内部回收站作为高级恢复手段）。
 - **没有用户可见的回收站页面**：删除确认后立即执行，不再要求去第二个页面二次删除（D-030）。
@@ -39,7 +39,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
 |---|---|---|
 | 已归档的聊天 | **设置 → 已归档的聊天** | 搜索、按项目分组、取消归档、永久删除、全部删除 |
 | 插件配置 | **设置 → Threadloom** | 4 个字段，保存即写回 profile patch |
-| 删除活动会话 | 会话行 hover → "..." → **删除聊天…** | 确认后立即永久删除；`inlineMenuEnabled=false` 时隐藏 |
+| 删除侧栏会话 | 会话行 hover → "..." → **删除会话** | 确认后立即永久删除；`inlineMenuEnabled=false` 时隐藏 |
 | 插件健康 | 侧栏 **插件** → Threadloom → 详情 | 健康徽标 + 诊断区块 |
 
 > 设置对话框的分区由 DSH 的 `settings.section` 扩展点提供（与 Claude Style / Dream 记忆等插件同级）；插件不再往插件页塞配置入口。
@@ -63,8 +63,8 @@ dsh plugin --profile <profile> remove dsh-session-butler
 |---|---|---|
 | `trashRetentionDays` | 30 | CLI 回收站保留天数；0 = 不设到期时间（GUI 不显示回收站） |
 | `cascadeSubagents` | true | 删除时级联子代理会话（fork 永不级联） |
-| `liveSettleTimeoutMs` | 3000 | 运行中会话先归档停止、再等待的毫秒上限 |
-| `inlineMenuEnabled` | true | 是否在会话行 "..." 菜单显示「删除聊天…」 |
+| `liveSettleTimeoutMs` | 3000 | 等待宿主自行释放已加载会话的毫秒上限；插件不会主动停止或归档该会话 |
+| `inlineMenuEnabled` | true | 是否在会话行 "..." 菜单显示「删除会话」 |
 
 > `permanentDelete` 字段仍保留在 schema 中供 CLI `purge` 使用（兼容已有 profile patch），但 GUI 删除以确认对话框授权，不再要求该配置。
 
@@ -96,14 +96,14 @@ dsh plugin --profile <profile> remove dsh-session-butler
 ```
 
 - `list`：列出回收站条目（删除时间、保留期是否已到、级联来源）。
-- `trash`：预检通过后移入回收站；运行中会话会先归档停止（D-013），迁移中会话会被拒绝；默认级联子代理会话（fork 永不级联）。
+- `trash`：预检通过后移入回收站；仍被加载的会话会等待宿主释放，超时则拒绝，不主动停止或归档；迁移中会话会被拒绝；默认级联子代理会话（fork 永不级联）。
 - `restore`：移回原目录；原路径已被占用时拒绝。
 - `purge`：CLI 高级恢复路径上的永久删除，需要配置 `permanentDelete: confirm` 且第二次输入完整 session id；GUI 不使用该命令，删除走 bridge `delete`。
 
 ## 安全边界
 
-- **运行中的会话不会被直接删除**：插件会拒绝，或按配置先归档（`stopActivity`）再删除。
-- **删除前必须抢占跨进程写租约**：证明没有其他 DSH 进程正在写同一个会话。
+- **仍被 DSH 加载的会话不会被直接删除**：停止活动不一定释放会话写句柄。请先安全重启持有它的 DSH 实例，重启后不要重新打开该会话，直接重试删除；其他进程持锁时还需关闭对应进程。
+- **删除前会探测写租约**：探测可以发现当时已有的写入者，但不构成覆盖整个删除过程的跨进程事务；避免其他 DSH 实例同时打开或修改该会话。
 - **只删会话目录内的文件**：不触碰 `attachments`、其他插件数据或未知文件。
 - **删除确认后立即永久删除**：GUI 用确认对话框提示不可恢复；Host 仍先做租约/运行中检查，再移动后立即 purge。CLI 的 `purge` 保留 `permanentDelete` 门禁与完整 id 输入。
 - **fork 不属于血缘**，不会被级联删除。

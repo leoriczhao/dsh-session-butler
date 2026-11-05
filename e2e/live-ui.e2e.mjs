@@ -119,7 +119,14 @@ async function openRowMenu(page, session) {
   await sleep(300)
   const action = row.locator('button[aria-label^="Session actions for"]').first()
   await action.click()
-  await page.waitForTimeout(300)
+  const deleteItem = page.getByRole('menuitem', { name: 'Delete session', exact: true })
+  await deleteItem.waitFor({ state: 'visible' })
+  const icon = deleteItem.locator('svg')
+  assert.equal(await icon.count(), 1, 'delete session has a visible icon')
+  assert.equal(await icon.isVisible(), true)
+  assert.equal(await icon.getAttribute('width'), '14')
+  assert.equal(await icon.getAttribute('height'), '14')
+  assert.equal(await icon.getAttribute('aria-hidden'), 'true')
 }
 
 async function deleteFromRowMenu(page, session) {
@@ -129,12 +136,13 @@ async function deleteFromRowMenu(page, session) {
     await dialog.accept()
   })
   await openRowMenu(page, session)
-  await page.getByRole('menuitem', { name: /Delete chat/ }).click()
+  await page.getByRole('menuitem', { name: 'Delete session', exact: true }).click()
   await waitFor(async () => {
     const sessions = (await listSessions(page)).sessions
     return !sessions.some(entry => entry.id === session.id)
   }, { timeout: 20_000, interval: 300, label: 'row-menu permanent delete' })
   assert.match(confirmation, /permanently deleted/i)
+  assert.match(confirmation, /subagent/i)
 }
 
 /** Exercise a rejected delete through the actual row menu without changing Host data. */
@@ -163,7 +171,7 @@ async function expectRowDeleteFailure(page, home, session, failure, expectedMess
   page.on('dialog', handleDialog)
   try {
     await openRowMenu(page, session)
-    await page.getByRole('menuitem', { name: /Delete chat/ }).click()
+    await page.getByRole('menuitem', { name: 'Delete session', exact: true }).click()
     await waitFor(() => dialogs.some(dialog => dialog.type === 'alert')
       && dialogs.every(dialog => dialog.accepted), {
       timeout: 5_000, label: 'visible delete failure',
@@ -212,7 +220,7 @@ async function expectRealDeleteFailure(page, home, session) {
       response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith('/session-butler/api/delete'))
     const [, response] = await Promise.all([
-      page.getByRole('menuitem', { name: /Delete chat/ }).click(),
+      page.getByRole('menuitem', { name: 'Delete session', exact: true }).click(),
       responsePromise,
     ])
     const body = await response.json()
@@ -233,6 +241,57 @@ async function expectRealDeleteFailure(page, home, session) {
   } finally {
     page.off('dialog', handleDialog)
     await unlink(conflict)
+  }
+}
+
+/** Rename through DSH so the host loads an idle Agent and holds its writer. */
+async function loadSession(page, session) {
+  await openRowMenu(page, session)
+  await page.getByRole('menuitem', { name: 'Rename', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: /Rename session/i })
+  await dialog.getByRole('textbox', { name: /Session name/i }).fill('L2 loaded session')
+  await dialog.getByRole('button', { name: 'Rename', exact: true }).click()
+  await dialog.waitFor({ state: 'hidden' })
+  await waitFor(async () => (await listSessions(page)).sessions.some(entry =>
+    entry.id === session.id && entry.live === true), {
+    timeout: 15_000, label: 'session loaded by the real host',
+  })
+}
+
+/** A loaded idle Agent must fail safely with an actionable message. */
+async function expectLoadedDeleteFailure(page, home, session) {
+  const dialogs = []
+  const handleDialog = async dialog => {
+    const record = { type: dialog.type(), message: dialog.message(), accepted: false }
+    dialogs.push(record)
+    await dialog.accept()
+    record.accepted = true
+  }
+  page.on('dialog', handleDialog)
+  try {
+    await openRowMenu(page, session)
+    const responsePromise = page.waitForResponse(response =>
+      response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/session-butler/api/delete'))
+    const [, response] = await Promise.all([
+      page.getByRole('menuitem', { name: 'Delete session', exact: true }).click(),
+      responsePromise,
+    ])
+    const body = await response.json()
+    assert.equal(response.status(), 200)
+    assert.equal(response.request().postDataJSON().sessionId, session.id)
+    assert.equal(body.ok, false)
+    assert.equal(body.error.code, 'session-in-use')
+    await waitFor(() => dialogs.some(dialog => dialog.type === 'alert')
+      && dialogs.every(dialog => dialog.accepted), {
+      timeout: 5_000, label: 'loaded session error alert',
+    })
+    assert.deepEqual(dialogs.map(dialog => dialog.type), ['confirm', 'alert'])
+    assert.match(dialogs[1].message, /restart DSH/i)
+    assert.ok((await listSessions(page)).sessions.some(entry => entry.id === session.id))
+    assert.equal(await hasSessionDirectory(home, session.id), true)
+  } finally {
+    page.off('dialog', handleDialog)
   }
 }
 
@@ -313,12 +372,32 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
       message: 'session is still running after stop was requested',
     }, /still in use/i)
     await expectRowDeleteFailure(page, fixture.home, alpha, {
+      code: 'session-in-use',
+      message: 'session remains loaded in this DSH process',
+    }, /restart DSH/i)
+    await expectRowDeleteFailure(page, fixture.home, alpha, {
       code: 'session-locked',
       message: 'session is held by another writer',
-    }, /in use by another process/i)
+    }, /another active writer/i)
     await expectRowDeleteFailure(page, fixture.home, alpha, null,
       /could not confirm whether.*was deleted/i)
     await expectRealDeleteFailure(page, fixture.home, alpha)
+
+    // Reproduce the reported failure with a real, idle session held by DSH.
+    await loadSession(page, alpha)
+    await expectLoadedDeleteFailure(page, fixture.home, alpha)
+
+    // A fresh host releases its own writer; the same session can then be deleted.
+    await server.stop()
+    server = await startDshWeb(fixture.home)
+    await page.goto(server.url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await page.waitForTimeout(4_000)
+    await installWelcomeAutoClose(page)
+    await dismissWelcome(page)
+    await waitFor(async () => (await listSessions(page)).sessions.some(entry =>
+      entry.id === alpha.id && entry.live === false), {
+      timeout: 15_000, label: 'session released by host restart',
+    })
 
     // D-030 one-step delete from the session row menu, with no trash residue.
     await deleteFromRowMenu(page, alpha)
@@ -333,8 +412,30 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
       timeout: 15_000, label: 'archived row visible',
     })
     const row = archived.locator('.sb-settings-row').filter({ hasText: 'L2 beta seeded chat' }).first()
-    await row.getByRole('button', { name: /Delete permanently/ }).click()
     const confirm = archived.getByRole('dialog')
+    let archivedDeleteId
+    const refuseArchivedDelete = async route => {
+      archivedDeleteId = route.request().postDataJSON().sessionId
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: { code: 'session-in-use', message: 'session remains loaded' } }),
+      })
+    }
+    await page.route('**/session-butler/api/delete', refuseArchivedDelete)
+    try {
+      await row.getByRole('button', { name: /Delete permanently/ }).click()
+      await confirm.waitFor({ state: 'visible', timeout: 10_000 })
+      await confirm.getByRole('button', { name: /Delete permanently/ }).click()
+      const notice = archived.locator('.sb-settings-error')
+      await notice.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await notice.innerText(), /restart DSH/i)
+      assert.equal(archivedDeleteId, beta.id)
+      assert.equal(await hasSessionDirectory(fixture.home, beta.id), true)
+    } finally {
+      await page.unroute('**/session-butler/api/delete', refuseArchivedDelete)
+    }
+    await row.getByRole('button', { name: /Delete permanently/ }).click()
     await confirm.waitFor({ state: 'visible', timeout: 10_000 })
     await confirm.getByRole('button', { name: /Delete permanently/ }).click()
     await waitFor(async () => {
