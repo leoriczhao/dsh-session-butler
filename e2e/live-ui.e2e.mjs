@@ -304,13 +304,14 @@ async function archiveFromRowMenu(page, session) {
   }, { timeout: 15_000, interval: 300, label: 'session archived' })
 }
 
-/** True when any directory under the home's sessions root carries this id. */
+/** True when a corpus directory carries this id; stable lock state is not session data. */
 async function hasSessionDirectory(home, sessionId) {
   const stack = [join(home, 'sessions')]
   while (stack.length > 0) {
     const dir = stack.pop()
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
+      if (entry.name === '.dsh-session-state') continue
       if (entry.name.includes(sessionId)) return true
       if (entry.isDirectory()) stack.push(join(dir, entry.name))
     }
@@ -339,6 +340,8 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
     await page.waitForTimeout(4_000)
     await installWelcomeAutoClose(page)
     await dismissWelcome(page)
+    const nativeDeletion = (await bridge(page, 'status')).body.value.backends.nativeDeletion === true
+    if (process.env.DSH_E2E_HOST_ROOT) assert.equal(nativeDeletion, true, 'upgraded host exposes native deletion')
 
     // Settings: Codex-shaped archived chats and Threadloom config, no Trash page.
     const dialog = await openSettings(page)
@@ -372,6 +375,12 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
       message: 'session is still running after stop was requested',
     }, /still in use/i)
     await expectRowDeleteFailure(page, fixture.home, alpha, {
+      code: 'session-busy', message: 'pending input',
+    }, /pending input/i)
+    await expectRowDeleteFailure(page, fixture.home, alpha, {
+      code: 'delete-partial', message: 'a child deletion already committed',
+    }, /some sessions were removed/i)
+    await expectRowDeleteFailure(page, fixture.home, alpha, {
       code: 'session-in-use',
       message: 'session remains loaded in this DSH process',
     }, /restart DSH/i)
@@ -381,26 +390,40 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
     }, /another active writer/i)
     await expectRowDeleteFailure(page, fixture.home, alpha, null,
       /could not confirm whether.*was deleted/i)
-    await expectRealDeleteFailure(page, fixture.home, alpha)
+    if (!nativeDeletion) await expectRealDeleteFailure(page, fixture.home, alpha)
 
-    // Reproduce the reported failure with a real, idle session held by DSH.
+    // Reproduce the real user case: DSH has loaded an idle Agent and writer.
     await loadSession(page, alpha)
-    await expectLoadedDeleteFailure(page, fixture.home, alpha)
-
-    // A fresh host releases its own writer; the same session can then be deleted.
-    await server.stop()
-    server = await startDshWeb(fixture.home)
-    await page.goto(server.url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
-    await page.waitForTimeout(4_000)
-    await installWelcomeAutoClose(page)
-    await dismissWelcome(page)
-    await waitFor(async () => (await listSessions(page)).sessions.some(entry =>
-      entry.id === alpha.id && entry.live === false), {
-      timeout: 15_000, label: 'session released by host restart',
-    })
-
-    // D-030 one-step delete from the session row menu, with no trash residue.
-    await deleteFromRowMenu(page, alpha)
+    if (nativeDeletion) {
+      const observer = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+      await observer.goto(server.url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      await observer.waitForTimeout(3_000)
+      await installWelcomeAutoClose(observer)
+      await dismissWelcome(observer)
+      await expandWorkspaces(observer)
+      const observedRow = observer.locator(`[data-row-key="session:${alpha.id}"]`)
+      await observedRow.click()
+      await observer.getByText('L2 alpha seeded chat', { exact: true }).last().waitFor({ state: 'visible' })
+      await deleteFromRowMenu(page, alpha)
+      await waitFor(async () => await observedRow.count() === 0, {
+        timeout: 15_000, label: 'deleted session removed from the second client without refresh',
+      })
+      await observer.close()
+    } else {
+      // Older hosts retain the writer: fail closed and verify the supported recovery.
+      await expectLoadedDeleteFailure(page, fixture.home, alpha)
+      await server.stop()
+      server = await startDshWeb(fixture.home)
+      await page.goto(server.url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      await page.waitForTimeout(4_000)
+      await installWelcomeAutoClose(page)
+      await dismissWelcome(page)
+      await waitFor(async () => (await listSessions(page)).sessions.some(entry =>
+        entry.id === alpha.id && entry.live === false), {
+        timeout: 15_000, label: 'session released by host restart',
+      })
+      await deleteFromRowMenu(page, alpha)
+    }
     assert.equal(await hasSessionDirectory(fixture.home, alpha.id), false)
     assert.equal((await bridge(page, 'status')).body.value.storage.trashCount, 0)
 
@@ -413,6 +436,24 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
     })
     const row = archived.locator('.sb-settings-row').filter({ hasText: 'L2 beta seeded chat' }).first()
     const confirm = archived.getByRole('dialog')
+    const refuseBatch = async route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, value: {
+        moved: [], failed: [beta.id], items: [{ id: beta.id, ok: false, moved: [], error: { code: 'session-busy', message: 'pending input' } }],
+      } }),
+    })
+    await page.route('**/session-butler/api/delete-many', refuseBatch)
+    try {
+      await archived.getByRole('button', { name: 'Delete all', exact: true }).click()
+      await confirm.getByRole('button', { name: 'Delete all', exact: true }).click()
+      const notice = archived.locator('.sb-settings-error')
+      await notice.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await notice.innerText(), /1 deletion request.*did not finish/i)
+      assert.equal(await row.count(), 1)
+      assert.equal(await hasSessionDirectory(fixture.home, beta.id), true)
+    } finally {
+      await page.unroute('**/session-butler/api/delete-many', refuseBatch)
+    }
     let archivedDeleteId
     const refuseArchivedDelete = async route => {
       archivedDeleteId = route.request().postDataJSON().sessionId

@@ -29,6 +29,8 @@ export class BridgeError extends Error {
 export function deleteErrorKey(error: unknown): string {
   const code = error instanceof BridgeError ? error.code : undefined
   if (code === 'session-running') return 'menu.delete.running'
+  if (code === 'session-busy') return 'menu.delete.busy'
+  if (code === 'delete-partial') return 'menu.delete.partial'
   if (code === 'session-in-use') return 'menu.delete.inUse'
   if (code === 'session-locked') return 'menu.delete.locked'
   return 'menu.delete.failed'

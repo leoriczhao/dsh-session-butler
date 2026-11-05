@@ -25,6 +25,8 @@ import type {
   SessionObservationLike,
   SessionPersistencePort,
   SessionPersistenceSnapshotLike,
+  SessionDeletionCoordinatorPort,
+  SessionDeletionHandleLike,
   SessionQueryPort,
   SessionRecordLike,
   SessionsPort,
@@ -51,6 +53,7 @@ export interface SessionButlerOptions {
   /** Live services may be late-bound: pass a getter when activation order is unknown. */
   readonly sessions?: SessionsPort | (() => SessionsPort | undefined)
   readonly agents?: AgentsPort | (() => AgentsPort | undefined)
+  readonly deletionCoordinator?: SessionDeletionCoordinatorPort | (() => SessionDeletionCoordinatorPort | undefined)
   /** Optional workspace services: absent in headless / ACP compositions. */
   readonly workspace?: WorkspaceRegistryPort | (() => WorkspaceRegistryPort | undefined)
   /** Volatile configuration values are passed as getters so settings edits apply without a remount. */
@@ -100,6 +103,7 @@ export interface ButlerHealth {
     readonly sessionQuery: boolean
     readonly workspaceRegistry: boolean
     readonly sessionController: boolean
+    readonly nativeDeletion: boolean
     readonly tools: boolean
     readonly commands: boolean
   }
@@ -304,6 +308,11 @@ export class SessionButlerService {
     return typeof this.options.workspace === 'function' ? this.options.workspace() : this.options.workspace
   }
 
+  private get deletionCoordinator(): SessionDeletionCoordinatorPort | undefined {
+    return typeof this.options.deletionCoordinator === 'function'
+      ? this.options.deletionCoordinator() : this.options.deletionCoordinator
+  }
+
   /** Current retention window; read live because the settings form edits a Volatile handle. */
   private get retentionDays(): number {
     return typeof this.options.retentionDays === 'function' ? this.options.retentionDays() : this.options.retentionDays
@@ -399,6 +408,7 @@ export class SessionButlerService {
       sessionQuery: true,
       workspaceRegistry: caps.workspaceRegistry ?? this.workspace !== undefined,
       sessionController: caps.sessionController ?? false,
+      nativeDeletion: typeof this.options.persistence.prepareDelete === 'function' && this.deletionCoordinator !== undefined,
       tools: caps.tools ?? false,
       commands: caps.commands ?? false,
     }
@@ -766,6 +776,12 @@ export class SessionButlerService {
     sessionId: string,
     options: { cascade?: boolean; currentSessionId?: string } = {},
   ): Promise<DeleteResult> {
+    if (options.currentSessionId === sessionId) {
+      throw new ButlerError('cannot-trash-current', 'refusing to delete the current session')
+    }
+    if (typeof this.options.persistence.prepareDelete === 'function') {
+      return this.deleteNative(sessionId, options)
+    }
     const moved = await this.trash(sessionId, options)
     const deleted: string[] = []
     for (const id of moved.trashed) {
@@ -775,6 +791,100 @@ export class SessionButlerService {
       deleted.push(id)
     }
     return { deleted }
+  }
+
+  /** Release the owner's idle handles, then use backend-owned deletion reservations. */
+  private async deleteNative(
+    sessionId: string,
+    options: { cascade?: boolean; currentSessionId?: string },
+  ): Promise<DeleteResult> {
+    const persistence = this.options.persistence
+    const prepare = persistence.prepareDelete
+    if (prepare === undefined) throw new ButlerError('unsupported', 'native deletion is unavailable')
+    const cascade = options.cascade ?? this.cascadeSubagents
+    const first = [await this.readRootRecord(sessionId), ...(cascade ? await this.readDescendants(sessionId) : [])]
+    const blocked = first.filter(record => record.formatStatus === 'migration-required').map(record => record.header.id)
+    if (blocked.length > 0) throw migrationError(blocked)
+    const deleted = new Set<string>()
+    const gone = new Set<string>()
+    let entered = false
+    const operation = async (): Promise<void> => {
+      if (entered) throw new ButlerError('internal', 'native deletion callback was invoked more than once')
+      entered = true
+      const current = await persistence.stat(sessionId)
+      const records = current === undefined
+        ? first
+        : [{ header: current.header, persisted: true, live: false, formatStatus: current.formatStatus },
+          ...(cascade ? await this.readDescendants(sessionId) : [])]
+      const byId = new Map(records.map(record => [record.header.id, record]))
+      if (options.currentSessionId !== undefined && byId.has(options.currentSessionId)) {
+        throw new ButlerError('cannot-trash-current', 'refusing to delete the current session')
+      }
+      const held = new Map<string, SessionDeletionHandleLike>()
+      let failure: { error: unknown } | undefined
+      try {
+        for (const id of [...byId.keys()].sort()) {
+          const snapshot = await persistence.stat(id)
+          if (snapshot === undefined) { gone.add(id); continue }
+          if (snapshot.formatStatus === 'migration-required') throw migrationError([id])
+          const handle = await prepare.call(persistence, id)
+          held.set(id, handle)
+          if (handle.header.id !== id) throw new ButlerError('unsupported', 'native deletion returned a different session identity')
+        }
+        // The traversal is parent-first, so reverse it to commit children before parents.
+        for (const id of [...byId.keys()].reverse()) {
+          const handle = held.get(id)
+          if (handle === undefined) continue
+          try {
+            await handle.commit()
+          } catch (error) {
+            if (handle.committed || (error !== null && typeof error === 'object'
+              && (error as { committed?: unknown }).committed === true)) {
+              deleted.add(id)
+              await this.clearNativeWorkspaceState(id)
+            }
+            throw error
+          }
+          deleted.add(id)
+          await this.clearNativeWorkspaceState(id)
+        }
+      } catch (error) {
+        failure = { error }
+      }
+      const closed = await Promise.allSettled([...held.values()].reverse().map(handle => handle.close()))
+      const closeErrors = closed.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+      if (failure !== undefined) {
+        if (closeErrors.length > 0) throw new AggregateError([failure.error, ...closeErrors], 'native deletion and reservation cleanup failed')
+        throw failure.error
+      }
+      if (closeErrors.length > 0) throw new AggregateError(closeErrors, 'native deletion reservation cleanup failed')
+    }
+    try {
+      const owner = this.deletionCoordinator
+      if (owner !== undefined) {
+        await owner.withIdleSessionsReleased(first.map(record => record.header.id), operation)
+        if (!entered) throw new ButlerError('unsupported', 'the DSH owner did not enter the deletion transaction')
+      } else {
+        for (const record of first) await this.waitForRelease(record.header.id)
+        await operation()
+      }
+    } catch (error) {
+      if (deleted.size > 0) {
+        throw new ButlerError('delete-partial', 'some session deletions committed before the operation failed', {
+          details: { sessionId, deletedIds: [...deleted] }, cause: error,
+        })
+      }
+      throw nativeDeletionFailure(error, sessionId)
+    }
+    return { deleted: [...deleted, ...gone] }
+  }
+
+  /** Workspace identity cleanup remains inside the backend's ID reservations. */
+  private async clearNativeWorkspaceState(sessionId: string): Promise<void> {
+    const workspace = this.workspace
+    if (workspace === undefined) return
+    await workspace.unarchiveSession(sessionId)
+    await workspace.unpinSession(sessionId)
   }
 
   /**
@@ -800,7 +910,10 @@ export class SessionButlerService {
         items.push({ id, ok: true, moved: result.deleted })
       } catch (error) {
         const failure = asButlerError(error, 'internal', `cannot delete session "${id}"`)
-        items.push({ id, ok: false, moved: [], error: { code: failure.code, message: failure.message } })
+        const committed = Array.isArray(failure.details.deletedIds)
+          ? failure.details.deletedIds.filter((value): value is string => typeof value === 'string') : []
+        for (const committedId of committed) deleted.add(committedId)
+        items.push({ id, ok: false, moved: committed, error: { code: failure.code, message: failure.message } })
       }
     }
     return { items, moved: [...deleted], failed: items.filter(item => !item.ok).map(item => item.id) }
@@ -933,6 +1046,29 @@ export class SessionButlerService {
       // Unpinning an unpinned id is a no-op failure at worst.
     }
   }
+}
+
+/** Preserve stable failures exposed by newer DSH owner and storage capabilities. */
+function nativeDeletionFailure(error: unknown, sessionId: string): ButlerError {
+  if (error instanceof ButlerError) return error
+  const value = error !== null && typeof error === 'object'
+    ? error as { code?: unknown; name?: unknown; dependentSessionId?: unknown } : undefined
+  if (value?.code === 'SESSION_RELEASE_BUSY') {
+    return new ButlerError('session-busy', 'the session has active work or pending input', { details: { sessionId }, cause: error })
+  }
+  if (value?.code === 'SESSION_RELEASE_UNSUPPORTED' || value?.code === 'SESSION_RELEASE_NOT_OWNED') {
+    return new ButlerError('session-in-use', 'this DSH owner cannot release the session', { details: { sessionId }, cause: error })
+  }
+  if (value?.name === 'SessionAlreadyOwnedError') {
+    return new ButlerError('session-locked', 'the session has another active writer', { details: { sessionId }, cause: error })
+  }
+  if (value?.name === 'SessionDeletionMigrationRequiredError') {
+    return migrationError([typeof value.dependentSessionId === 'string' ? value.dependentSessionId : sessionId])
+  }
+  if (value?.name === 'SessionPersistenceNotFoundError') {
+    return new ButlerError('session-not-found', 'the session no longer exists', { details: { sessionId }, cause: error })
+  }
+  return asButlerError(error, 'internal', 'native session deletion failed')
 }
 
 /** Build the migration-refusal error naming every blocked session. */

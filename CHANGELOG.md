@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — 宿主协调的空闲会话删除（2026-11-06）
+
+- 探测配套 DSH 的空闲句柄释放与原生删除事务，已加载的空闲会话可直接删除；旧宿主继续拒绝仍被加载的会话。
+- 原生流程先预留全部后端 ID 锁，再从叶到根提交，归档/置顶清理在锁内完成；失败时保留已提交 ID，批量页面明确显示未完成项。
+- 增加 `backends.nativeDeletion` 诊断，L2 可通过 `DSH_E2E_HOST_ROOT` 验证配套宿主；覆盖双客户端查看同一会话时直接删除，另保留已发布宿主的兼容性验证。
+
 ### Fixed — 会话删除入口与占用诊断（2026-11-06）
 
 - 会话行菜单增加与 DSH 一致的删除图标，文案改为「删除会话」/「Delete session」。

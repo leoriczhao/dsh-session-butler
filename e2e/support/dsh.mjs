@@ -19,7 +19,10 @@ import { fileURLToPath } from 'node:url'
 import { zstdCompressSync } from 'node:zlib'
 
 export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
-export const DSH_BIN = join(REPO_ROOT, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+const HOST_ROOT = process.env.DSH_E2E_HOST_ROOT
+export const DSH_BIN = HOST_ROOT
+  ? join(HOST_ROOT, 'apps', 'cli', 'src', 'bin.ts')
+  : join(REPO_ROOT, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 export const PACKAGE_JSON = JSON.parse(await readFile(join(REPO_ROOT, 'package.json'), 'utf8'))
 
 const DEFAULT_WORKSPACES = ['alpha', 'beta']
@@ -109,12 +112,14 @@ function projectKey(cwd) {
  * The first zstd frame must contain only the header line; the remaining events
  * live in their own frame, exactly as the DSH persistence backend expects.
  */
-async function writeSeededSession(home, { id, cwd, title }) {
+async function writeSeededSession(home, { id, cwd, title, origin, parentSession }) {
   const now = Date.now()
   const messageId = randomUUID()
   const header = {
     type: 'session', version: 4, id, createdAt: now, cwd, isSeeded: false,
-    delegationDepth: 0, agentPreset: 'standard',
+    delegationDepth: origin === 'subagent' ? 1 : 0, agentPreset: 'standard',
+    ...(origin === undefined ? {} : { origin }),
+    ...(parentSession === undefined ? {} : { parentSession }),
   }
   const events = [
     { type: 'permission/preset', seq: 0, time: now, data: { preset: 'workspace-write' } },
@@ -194,6 +199,8 @@ export async function createDshHome({ workspaces = DEFAULT_WORKSPACES, seedSessi
       workspace: entry.workspace,
       title: entry.title ?? `E2E seeded ${entry.workspace} chat`,
       cwd: join(home, `project-${entry.workspace}`),
+      ...(entry.origin === undefined ? {} : { origin: entry.origin }),
+      ...(entry.parentSession === undefined ? {} : { parentSession: entry.parentSession }),
     }
   })
   for (const session of sessions) await writeSeededSession(home, session)
@@ -211,8 +218,9 @@ export async function createDshHome({ workspaces = DEFAULT_WORKSPACES, seedSessi
  * @returns the printed URL plus teardown and captured output.
  */
 export async function startDshWeb(home, { timeout = 45_000 } = {}) {
-  const child = spawn(process.execPath, [DSH_BIN, 'web', '--no-open', '--port', '0'], {
-    cwd: REPO_ROOT,
+  const args = [...(HOST_ROOT ? ['--import', 'tsx/esm'] : []), DSH_BIN, 'web', '--no-open', '--port', '0']
+  const child = spawn(process.execPath, args, {
+    cwd: HOST_ROOT ?? REPO_ROOT,
     env: { ...process.env, DSH_HOME: home },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

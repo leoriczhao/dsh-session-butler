@@ -240,18 +240,24 @@ export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
     setBusy('all')
     setError(null)
     setNotice(null)
+    let moved = 0
     try {
-      let moved = 0
+      let failed = 0
       for (let offset = 0; offset < ids.length; offset += 50) {
         const chunk = ids.slice(offset, offset + 50)
-        const result = await call<{ moved?: readonly string[] }>('delete-many', { sessionIds: chunk })
+        const result = await call<{ moved?: readonly string[]; failed?: readonly string[] }>('delete-many', { sessionIds: chunk })
         moved += result.moved?.length ?? 0
+        failed += result.failed?.length ?? 0
       }
-      setNotice(t('archived.deletedAll', { count: moved }))
       await load()
+      if (failed > 0) setError(t('archived.deleteAllPartial', { count: moved, failed }))
+      else setNotice(t('archived.deletedAll', { count: ids.length }))
       refreshSessions?.()
     } catch (reason) {
-      setError(messageOf(reason))
+      console.error('dsh-session-butler: batch deletion did not finish', reason)
+      await load()
+      setError(t('archived.deleteAllUnknown', { count: moved }))
+      refreshSessions?.()
     } finally {
       setBusy(null)
     }
