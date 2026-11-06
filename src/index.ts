@@ -25,7 +25,6 @@ import type {
   ButlerSessionCreation,
   ButlerSessionForking,
   CommandsPort,
-  SessionDeletionCoordinatorPort,
   SessionPersistencePort,
   SessionQueryPort,
   SessionsPort,
@@ -145,14 +144,11 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     // activation (the Web profile mounts some of them after the bundle rows).
     sessions: () => host.get<SessionsPort>('sessions'),
     agents: () => host.get<AgentsPort>('agents'),
-    deletionCoordinator: () => {
-      const owner = host.get<SessionDeletionCoordinatorPort>('sessionController')
-      return typeof owner?.withIdleSessionsReleased === 'function' ? owner : undefined
-    },
     workspace: () => host.get<WorkspaceRegistryPort>('workspaceRegistry'),
   })
 
   host.provide('sessionButler', service)
+
 
   // The bridge needs webServer + connection, which headless / ACP compositions
   // never provide. Inject them optionally so the command surface still mounts

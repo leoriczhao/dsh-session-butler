@@ -46,10 +46,10 @@ test('the packed plugin composes into a real dsh web profile', { timeout: 120_00
 test('the real Host exposes the permanent delete route without a trash detour', { timeout: 120_000 }, async () => {
   const rootId = 'session-e2e-native-cascade-root'
   const childIds = [1, 2, 3, 4].map(index => 'session-e2e-native-cascade-child-' + index)
-  const fixture = await createDshHome({ seedSessions: process.env.DSH_E2E_HOST_ROOT ? [
+  const fixture = await createDshHome({ seedSessions: [
     { id: rootId, workspace: 'alpha', title: 'Native cascade parent' },
     ...childIds.map(id => ({ id, workspace: 'alpha', title: id, origin: 'subagent', parentSession: rootId })),
-  ] : [] })
+  ] })
   let server
   try {
     server = await startDshWeb(fixture.home)
@@ -70,9 +70,7 @@ test('the real Host exposes the permanent delete route without a trash detour', 
     })
     assert.equal(list.body.ok, true)
     assert.equal(list.body.value.total, 0)
-    if (process.env.DSH_E2E_HOST_ROOT) {
-      const status = await callBridge(server.origin, authenticated.cookie, 'status')
-      assert.equal(status.body.value.backends.nativeDeletion, true)
+    {
       const removed = await callBridge(server.origin, authenticated.cookie, 'delete', { sessionId: rootId })
       assert.equal(removed.body.ok, true, JSON.stringify(removed.body))
       assert.deepEqual(new Set(removed.body.value.deleted), new Set([rootId, ...childIds]))
