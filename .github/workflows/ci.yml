@@ -44,7 +44,8 @@ jobs:
           DSH_VERSION: '0.2.1-rc.3'
 
   e2e:
-    runs-on: ubuntu-latest
+    # Playwright's Chromium build does not support ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
