@@ -1,28 +1,40 @@
 /**
- * Threadloom — Client half (M2: Web management page).
+ * Threadloom — Client half (D-029: settings-only chat management).
  *
- * Registers one keyed `main` panel and one `sidebar.panellist` row through two
- * independent slot injections: the slots are declared by different owner
- * plugins, so a single `main` injection can run before the sidebar slot exists.
- * Locale dictionaries are registered on mount and released with the plugin.
+ * The plugin no longer owns a session-library page or a navigation button.
+ * Everything lives where Codex puts it:
+ *   - Settings → Archived chats (list / search / unarchive / delete)
+ *   - Settings → Trash (recoverable deletions)
+ *   - Settings → Threadloom (the plugin's configuration form)
+ * plus one session-row menu action ("Move to trash") and the plugin-page
+ * health badge/diagnostics. Every contribution degrades silently when the
+ * host does not declare its slot.
  *
  * @module dsh-session-butler/client
  */
 
-import { PANEL_ID } from '../shared/identity.js'
+import { PLUGIN_ID, PLUGIN_ROW_ID } from '../shared/identity.js'
 import { callBridge } from './bridge.js'
-import type { ClientContextLike, PageActions } from './contract.js'
+import type {
+  ClientConfigLike,
+  ClientContextLike,
+  ConfigFormsLike,
+  SlotRegistrationLike,
+} from './contract.js'
 import { EN, NS, ZH } from './locale.js'
-import { SessionButlerIcon, SessionButlerPage, SessionDetailView } from './page.js'
+import { ThreadloomDeleteMenuItem } from './menu.js'
+import type { DeleteMenuItemProps } from './menu.js'
+import { ThreadloomDetailBadge, ThreadloomDetailSection } from './plugin-page.js'
+import { ThreadloomArchivedSection, ThreadloomConfigSection } from './settings.js'
+import type { SectionActions } from './settings.js'
 
-/**
- * Client services this half needs: slot registration, locale dictionaries, the
- * workspace navigation service (open a session from the management page), and
- * the session store's manual refresh after a trash/restore.
- */
+// Exported for the client tests; the browser module table itself only uses
+// `apply` and `inject`.
+export { ThreadloomArchivedSection, ThreadloomConfigSection } from './settings.js'
+export { ThreadloomDeleteMenuItem } from './menu.js'
+
+/** Client services this half needs. */
 export const inject: string[] = ['slots', 'locale', 'uiWorkspace', 'sessions']
-
-export { SessionButlerIcon, SessionButlerPage, SessionDetailView }
 
 /** Mount the Threadloom Client half. */
 export function apply(ctx: ClientContextLike): void {
@@ -36,38 +48,99 @@ export function apply(ctx: ClientContextLike): void {
   }
 }
 
+/** One settings section registration row. */
+interface SettingsSectionSpec {
+  readonly id: string
+  readonly order: number
+  readonly labelKey: string
+  readonly component: (props: SectionActions) => unknown
+}
+
 function applyInner(ctx: ClientContextLike): void {
   ctx.effect(() => {
     const disposers: Array<() => void> = []
     try {
-      // Dictionaries first: the sidebar label resolver and the page render use
-      // the bound translator, and locale registration must precede them.
+      // Dictionaries first: the sidebar label resolver and every section render
+      // use the bound translator, and locale registration must precede them.
       disposers.push(ctx.locale.register(NS, 'zh', ZH))
       disposers.push(ctx.locale.register(NS, 'en', EN))
       const t = ctx.locale.bind(NS)
-      const actions: PageActions = {
-        call: (method, payload) => callBridge(method, payload),
-        openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
-        refreshSessions: () => {
-          const sessions = ctx.sessions
-          if (sessions === undefined) return
-          void sessions.refresh().catch(() => {
-            // A refresh failure leaves the store's own error state authoritative.
-          })
-        },
+
+      const call = <T,>(method: string, payload?: unknown): Promise<T> => callBridge<T>(method, payload)
+      const refreshSessions = (): void => {
+        const sessions = ctx.sessions
+        if (sessions === undefined) return
+        void sessions.refresh().catch(() => {
+          // A refresh failure leaves the store's own error state authoritative.
+        })
       }
-      // The two slots belong to different owner plugins: `main` is declared by
-      // the layout, `sidebar.panellist` only when the sidebar plugin activates.
-      // Injecting both through `main` therefore raced the sidebar declaration
-      // and threw `slot "sidebar.panellist" is not declared` in a real Web boot.
-      disposers.push(ctx.slots.inject('main', () => ctx.slots.register(
-        { name: 'main', key: PANEL_ID, locale: NS, inject: () => actions },
-        SessionButlerPage as unknown as (props: never) => unknown,
+
+      const configForms = ctx.get?.('configForms') as ConfigFormsLike | undefined
+      const configForm = configForms?.get<ClientConfigLike>(PLUGIN_ROW_ID)
+
+      // Bind the optional runtime handlers once; the settings sections never
+      // depend on the navigation service owning more than unarchive.
+      const unarchiveSession = ctx.uiWorkspace.unarchiveSession
+      const uiWorkspace = unarchiveSession === undefined
+        ? undefined
+        : { unarchiveSession: (sessionId: string) => unarchiveSession.call(ctx.uiWorkspace, sessionId) }
+
+      const actions: SectionActions = {
+        t,
+        call,
+        refreshSessions,
+        ...(uiWorkspace === undefined ? {} : { uiWorkspace }),
+        ...(configForm === undefined ? {} : { configForm }),
+      }
+
+      const sections: readonly SettingsSectionSpec[] = [
+        { id: 'archived-sessions', order: 44, labelKey: 'settings.archived', component: ThreadloomArchivedSection },
+        { id: 'threadloom', order: 45, labelKey: 'settings.config', component: ThreadloomConfigSection },
+      ]
+      for (const section of sections) {
+        disposers.push(ctx.slots.inject('settings.section', () => ctx.slots.register(
+          {
+            name: 'settings.section',
+            id: section.id,
+            order: section.order,
+            label: () => t(section.labelKey),
+            locale: NS,
+          },
+          ((props: unknown) => section.component({ ...(props as object), ...actions })) as unknown as (props: never) => unknown,
+        )))
+      }
+
+      // Row menu: the one action the official menu does not own.
+      disposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register(
+        { name: 'sidebar.workspaces.session.menu.item', id: 'threadloom.delete', order: 470, locale: NS },
+        ((props: unknown) => ThreadloomDeleteMenuItem({
+          ...(props as DeleteMenuItemProps),
+          t,
+          refreshSessions,
+          ...(configForm === undefined ? {} : { configForm }),
+        })) as unknown as (props: never) => unknown,
       )))
-      disposers.push(ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
-        { name: 'sidebar.panellist', id: PANEL_ID, order: 6, label: () => t('nav'), locale: NS },
-        SessionButlerIcon as unknown as (props: never) => unknown,
-      )))
+
+      // DSH Plugins page health surfaces (configuration now lives in Settings).
+      const pluginsPageSlots: ReadonlyArray<{
+        readonly name: string
+        readonly options: SlotRegistrationLike
+        readonly component: (props: never) => unknown
+      }> = [
+        {
+          name: 'plugins.detail.badge',
+          options: { name: 'plugins.detail.badge', id: 'threadloom-health', locale: NS },
+          component: ThreadloomDetailBadge as unknown as (props: never) => unknown,
+        },
+        {
+          name: 'plugins.detail.section',
+          options: { name: 'plugins.detail.section', id: 'threadloom-diagnostics', locale: NS },
+          component: ThreadloomDetailSection as unknown as (props: never) => unknown,
+        },
+      ]
+      for (const slot of pluginsPageSlots) {
+        disposers.push(ctx.slots.inject(slot.name, () => ctx.slots.register(slot.options, slot.component)))
+      }
     } catch (error) {
       // A retried activation must not find a half-registered namespace or slot.
       for (const dispose of disposers.reverse()) {
@@ -89,5 +162,5 @@ function applyInner(ctx: ClientContextLike): void {
         }
       }
     }
-  }, 'session-butler: management page')
+  }, 'session-butler: settings sections')
 }

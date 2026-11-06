@@ -42,3 +42,38 @@ jobs:
         env:
           # Declared DSH release this plugin is verified against; keep in sync with engines.dsh.
           DSH_VERSION: '0.2.1-rc.3'
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Real-composition and browser E2E
+        run: pnpm run test:e2e
+
+      - name: Upload E2E failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure
+          path: e2e/.artifacts
+          if-no-files-found: ignore

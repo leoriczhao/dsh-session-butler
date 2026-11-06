@@ -44,7 +44,7 @@ function record(value, formatStatus) {
 }
 
 /** Build a service over fakes; every port is a plain object exercising the structural contract. */
-function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, formatStatus = {}, locked = [], live = new Set(), workspace, now = () => NOW, permanentDelete = 'confirm', cascadeSubagents = true, retentionDays = 30 }) {
+function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, formatStatus = {}, locked = [], live = new Set(), liveAgents = new Map(), workspace, now = () => NOW, permanentDelete = 'confirm', cascadeSubagents = true, retentionDays = 30, liveSettleTimeoutMs = 3000 }) {
   const query = {
     async observeSession(id) {
       const found = headers[id]
@@ -64,7 +64,8 @@ function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, forma
       return {
         target: record(headers[id]),
         ancestors: [],
-        descendants: (descendants[id] ?? []).map(node => ({ session: node, descendants: [] })),
+        descendants: (descendants[id] ?? []).map(node =>
+          node.session === undefined ? { session: node, descendants: [] } : node),
         complete: true,
       }
     },
@@ -73,7 +74,11 @@ function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, forma
   const persistence = {
     opened,
     async open(id) {
-      if (locked.includes(id)) throw new Error('writer held')
+      if (locked.includes(id)) {
+        const error = new Error('session already has a writer')
+        error.name = 'SessionAlreadyOwnedError'
+        throw error
+      }
       opened.push(id)
       return { async close() {} }
     },
@@ -91,7 +96,7 @@ function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, forma
     },
   }
   const sessions = { get: id => (live.has(id) ? {} : undefined) }
-  const agents = { get: () => undefined }
+  const agents = { get: id => liveAgents.get(id) }
   const service = new SessionButlerService({
     sessionsRoot,
     trashRoot,
@@ -103,6 +108,7 @@ function makeService({ sessionsRoot, trashRoot, headers, descendants = {}, forma
     retentionDays,
     cascadeSubagents,
     permanentDelete,
+    liveSettleTimeoutMs,
     now,
   })
   return { service, persistence, workspace }
@@ -174,7 +180,37 @@ test('cascade selects subagent descendants only, never ordinary forks', async ()
   }
 })
 
-test('running sessions are refused without a workspace service, and stopped with one', async () => {
+test('cascade keeps ordinary forks and their subagents intact', async () => {
+  const home = await makeHome()
+  try {
+    const ids = ['root', 'child', 'grandchild', 'fork', 'fork-child']
+    for (const id of ids) await addSession(home.sessionsRoot, '--proj--', id)
+    const headers = {
+      root: header('root'),
+      child: header('child', { origin: 'subagent', parentSession: 'root' }),
+      grandchild: header('grandchild', { origin: 'subagent', parentSession: 'child' }),
+      fork: header('fork', { parentSession: 'root', isSeeded: true }),
+      'fork-child': header('fork-child', { origin: 'subagent', parentSession: 'fork' }),
+    }
+    const node = (id, descendants = []) => ({ session: record(headers[id]), descendants })
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers,
+      descendants: {
+        root: [node('child', [node('grandchild')]), node('fork', [node('fork-child')])],
+      },
+    })
+    const result = await service.delete('root', { cascade: true })
+    assert.deepEqual(result.deleted, ['root', 'child', 'grandchild'])
+    assert.deepEqual((await readdir(path.join(home.sessionsRoot, '--proj--'))).sort(), ['fork', 'fork-child'])
+    assert.equal((await service.listTrash()).entries.length, 0)
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('a live session is refused or waits for its owner to release it', async () => {
   const home = await makeHome()
   try {
     await addSession(home.sessionsRoot, '--proj--', 'session-a')
@@ -184,6 +220,8 @@ test('running sessions are refused without a workspace service, and stopped with
       trashRoot: home.trashRoot,
       headers: { 'session-a': header('session-a') },
       live,
+      liveAgents: new Map([['session-a', { status: 'running' }]]),
+      liveSettleTimeoutMs: 1,
     })
     await assert.rejects(
       () => refused.service.trash('session-a'),
@@ -192,25 +230,159 @@ test('running sessions are refused without a workspace service, and stopped with
     assert.equal((await readdir(path.join(home.sessionsRoot, '--proj--'))).length, 1)
 
     const calls = []
-    const stoppingLive = new Set(['session-a'])
+    const releasingLive = new Set(['session-a'])
     const workspace = {
-      async archiveSession(id, options) { calls.push(['archive', id, options]); stoppingLive.delete(id) },
+      async archiveSession(id) { calls.push(['archive', id]) },
       async unarchiveSession(id) { calls.push(['unarchive', id]) },
       async pinSession() { throw new Error('not used') },
       async unpinSession(id) { calls.push(['unpin', id]) },
     }
-    const stopping = makeService({
+    const waiting = makeService({
       sessionsRoot: home.sessionsRoot,
       trashRoot: home.trashRoot,
       headers: { 'session-a': header('session-a') },
-      live: stoppingLive,
+      live: releasingLive,
+      liveSettleTimeoutMs: 1000,
       workspace,
     })
-    const result = await stopping.service.trash('session-a')
+    setTimeout(() => releasingLive.delete('session-a'), 10)
+    const result = await waiting.service.trash('session-a')
     assert.deepEqual(result.trashed, ['session-a'])
-    assert.deepEqual(calls[0], ['archive', 'session-a', { stopActivity: true }])
+    assert.ok(!calls.some(call => call[0] === 'archive'))
     assert.ok(calls.some(call => call[0] === 'unarchive' && call[1] === 'session-a'))
     assert.ok(calls.some(call => call[0] === 'unpin' && call[1] === 'session-a'))
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('an idle resident session is reported as loaded without changing its state', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-idle')
+    const calls = []
+    const workspace = {
+      archivedSessionIds: [],
+      pinnedSessionIds: ['session-idle'],
+      async archiveSession(id) { calls.push(['archive', id]) },
+      async unarchiveSession(id) { calls.push(['unarchive', id]) },
+      async pinSession(id) { calls.push(['pin', id]) },
+      async unpinSession(id) { calls.push(['unpin', id]) },
+    }
+    const { service, persistence } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-idle': header('session-idle') },
+      live: new Set(['session-idle']),
+      liveAgents: new Map([['session-idle', { status: 'idle' }]]),
+      liveSettleTimeoutMs: 1,
+      workspace,
+    })
+    await assert.rejects(
+      () => service.delete('session-idle'),
+      error => error instanceof ButlerError && error.code === 'session-in-use',
+    )
+    assert.deepEqual(calls, [])
+    assert.deepEqual(persistence.opened, [])
+    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-idle'])
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('a running resident agent is refused without stopping unrelated work', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-active')
+    const calls = []
+    const workspace = {
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+      async archiveSession(id) { calls.push(['archive', id]) },
+      async unarchiveSession(id) { calls.push(['unarchive', id]) },
+      async pinSession(id) { calls.push(['pin', id]) },
+      async unpinSession(id) { calls.push(['unpin', id]) },
+    }
+    const { service, persistence } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-active': header('session-active') },
+      live: new Set(['session-active']),
+      liveAgents: new Map([['session-active', { status: 'running' }]]),
+      liveSettleTimeoutMs: 1,
+      workspace,
+    })
+    await assert.rejects(() => service.delete('session-active'),
+      error => error instanceof ButlerError && error.code === 'session-running')
+    assert.deepEqual(calls, [])
+    assert.deepEqual(persistence.opened, [])
+    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-active'])
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('a refused deletion leaves an already archived session untouched', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-archived')
+    const calls = []
+    const workspace = {
+      archivedSessionIds: ['session-archived'],
+      pinnedSessionIds: [],
+      async archiveSession(id) { calls.push(['archive', id]) },
+      async unarchiveSession(id) { calls.push(['unarchive', id]) },
+      async pinSession(id) { calls.push(['pin', id]) },
+      async unpinSession(id) { calls.push(['unpin', id]) },
+    }
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-archived': header('session-archived') },
+      live: new Set(['session-archived']),
+      liveSettleTimeoutMs: 1,
+      workspace,
+    })
+    await assert.rejects(
+      () => service.delete('session-archived'),
+      error => error instanceof ButlerError && error.code === 'session-in-use',
+    )
+    assert.deepEqual(calls, [])
+    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-archived'])
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('a refused deletion leaves a pinned session untouched', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-pinned')
+    let archived = false
+    let pinned = true
+    let archiveCalls = 0
+    const workspace = {
+      get archivedSessionIds() { return archived ? ['session-pinned'] : [] },
+      get pinnedSessionIds() { return pinned ? ['session-pinned'] : [] },
+      async archiveSession() { archiveCalls += 1; archived = true; pinned = false },
+      async unarchiveSession() { archived = false },
+      async pinSession() { pinned = true },
+      async unpinSession() { pinned = false },
+    }
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-pinned': header('session-pinned') },
+      live: new Set(['session-pinned']),
+      liveSettleTimeoutMs: 1,
+      workspace,
+    })
+    await assert.rejects(() => service.delete('session-pinned'),
+      error => error instanceof ButlerError && error.code === 'session-in-use')
+    assert.equal(archived, false)
+    assert.equal(pinned, true)
+    assert.equal(archiveCalls, 0)
+    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-pinned'])
   } finally {
     await home.cleanup()
   }
@@ -251,6 +423,27 @@ test('write-lease failure and migration-required state abort before moving', asy
   }
 })
 
+test('unexpected write-probe errors are not reported as another writer', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-a')
+    const { service, persistence } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-a': header('session-a') },
+    })
+    persistence.open = async () => { throw new Error('permission denied') }
+    await assert.rejects(() => service.delete('session-a'),
+      error => error instanceof ButlerError && error.code === 'internal')
+    persistence.open = async () => ({ close: async () => { throw new Error('close failed') } })
+    await assert.rejects(() => service.delete('session-a'),
+      error => error instanceof ButlerError && error.code === 'internal')
+    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-a'])
+  } finally {
+    await home.cleanup()
+  }
+})
+
 test('purge requires the config gate and the exact id, then removes the entry', async () => {
   const home = await makeHome()
   try {
@@ -281,6 +474,55 @@ test('purge requires the config gate and the exact id, then removes the entry', 
     await enabled.service.purge('session-a', 'session-a')
     assert.equal((await enabled.service.listTrash()).entries.length, 0)
     assert.equal((await readdir(path.join(home.trashRoot, '--proj--')).catch(() => [])).length, 0)
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('delete removes the session permanently without leaving a trash entry', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-a')
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: { 'session-a': header('session-a') },
+      permanentDelete: 'disabled',
+    })
+
+    const result = await service.delete('session-a', { currentSessionId: 'session-other' })
+    assert.deepEqual(result.deleted, ['session-a'])
+    assert.equal((await readdir(path.join(home.sessionsRoot, '--proj--'))).length, 0)
+    assert.equal((await service.listTrash()).entries.length, 0)
+  } finally {
+    await home.cleanup()
+  }
+})
+
+test('delete cascades subagent descendants and deleteMany reports per-item outcomes', async () => {
+  const home = await makeHome()
+  try {
+    await addSession(home.sessionsRoot, '--proj--', 'session-a')
+    await addSession(home.sessionsRoot, '--proj--', 'session-child')
+    const { service } = makeService({
+      sessionsRoot: home.sessionsRoot,
+      trashRoot: home.trashRoot,
+      headers: {
+        'session-a': header('session-a'),
+        'session-child': header('session-child', { origin: 'subagent' }),
+      },
+      descendants: { 'session-a': [{ header: header('session-child', { origin: 'subagent' }), live: false, persisted: true }] },
+    })
+
+    const result = await service.delete('session-a')
+    assert.deepEqual([...result.deleted].sort(), ['session-a', 'session-child'])
+    assert.equal((await readdir(path.join(home.sessionsRoot, '--proj--'))).length, 0)
+    assert.equal((await service.listTrash()).entries.length, 0)
+
+    const batch = await service.deleteMany(['session-missing'])
+    assert.equal(batch.items.length, 1)
+    assert.equal(batch.items[0].ok, false)
+    assert.deepEqual(batch.failed, ['session-missing'])
   } finally {
     await home.cleanup()
   }

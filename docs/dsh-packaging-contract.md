@@ -805,6 +805,7 @@ DSH 没有内置官方市场，用户需要在插件页的 **Discover** 里手�
 23. **Client 半写 Cordis 服务依赖时只写了 `dsh.client.inject`**（包边）而不是 `apply` 导出对象里的 `inject: ['slots', 'locale']`（服务名）→ 激活顺序/服务不可用问题。两者不可互换。
 24. **在 profile 目录手工 `pnpm add`/改 `package.json`** → 绕过选择/校验/回滚逻辑；统一用 `dsh plugin` 或 `plugin_manager`。
 25. **`import()` 拆包但没把产物改写成 `require.async`** → 动态 chunk 在运行时 require miss；首版保持单 `client.js` 最稳（见 §6.3）。
+26. **把 `defineTool` 的逐属性参数 DSL 直接塞进 `ctx.tools.register({ parameters })`** → 注册不报错（`ToolsService.register` 只校验 `output.schema`），但 `parameters` 会原样发给模型；provider 要求对象根 JSON Schema，裸属性表报 `Invalid schema for function ...: got 'type: null'` 并**拒绝整个请求**，连其他工具一起不可用。第三方插件必须自己编译成 `{type:'object', properties, required?}`（本仓库 `src/host/schema.ts`）。
 
 ---
 

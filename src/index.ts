@@ -15,13 +15,17 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
-import { Config, type ThreadloomConfig } from './config.js'
+import { Config, readConfigValue, type ThreadloomConfig } from './config.js'
 import { mountBridge } from './host/bridge.js'
 import { createButlerCommand } from './host/command.js'
 import type {
   AgentsPort,
   ButlerHostContext,
+  ButlerToolCapabilities,
+  ButlerSessionCreation,
+  ButlerSessionForking,
   CommandsPort,
+  SessionDeletionCoordinatorPort,
   SessionPersistencePort,
   SessionQueryPort,
   SessionsPort,
@@ -29,8 +33,9 @@ import type {
   WorkspaceRegistryPort,
 } from './host/ports.js'
 import { SessionButlerService } from './host/service.js'
-import { registerButlerTools } from './host/tools.js'
+import { registerButlerTools, registerCreationTools, registerReadTools } from './host/tools.js'
 import { API_PREFIX, PANEL_ID, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
+import { PLUGIN_VERSION } from './host/version.js'
 
 export { Config, PLUGIN_ID, PLUGIN_ROW_ID, PANEL_ID, API_PREFIX }
 export type { ThreadloomConfig }
@@ -61,6 +66,51 @@ export const name = PLUGIN_ID
  */
 export const inject = ['sessionQuery', 'sessionPersistence', 'sessions', 'agents'] as const
 
+/**
+ * Resolve the Workspace that owns a Session, falling back to a Workspace at the
+ * same cwd. Host `sessionController.create` only attaches a child to a
+ * Workspace when it receives `workspaceId`; a cwd-only child is left ungrouped
+ * and cannot be continued from the Web sidebar until re-bound (D-027).
+ *
+ * The registry is looked up lazily on every call so a late-mounted Workspace
+ * service is still observed after the tools were registered.
+ */
+function workspaceFor(
+  host: ButlerHostContext,
+  request: { readonly sessionId?: string; readonly cwd: string },
+): string | undefined {
+  const workspaces = host.get<WorkspaceRegistryPort>('workspaceRegistry')?.list?.()
+  if (workspaces === undefined) return undefined
+  const sessionId = request.sessionId
+  const owner = sessionId === undefined
+    ? undefined
+    : workspaces.find(workspace => workspace.sessionIds?.includes(sessionId) === true)
+  if (owner?.id !== undefined) return owner.id
+  return workspaces.find(workspace => workspace.path === request.cwd && workspace.id !== undefined)?.id
+}
+
+/**
+ * Resolve the optional `sessionController` Remote owner into tool capabilities.
+ *
+ * The Web profile mounts it; headless/ACP compositions may not. Both methods are
+ * probed individually so a partial controller still advertises what it supports.
+ */
+function sessionToolCapabilities(host: ButlerHostContext): ButlerToolCapabilities {
+  const controller = host.get<ButlerSessionCreation & ButlerSessionForking>('sessionController')
+  if (controller === undefined) return {}
+  return {
+    ...(typeof controller.create === 'function'
+      ? {
+          create: {
+            create: (request: Parameters<ButlerSessionCreation['create']>[0]) => controller.create(request),
+            resolveWorkspace: (request: { readonly sessionId?: string; readonly cwd: string }) => workspaceFor(host, request),
+          },
+        }
+      : {}),
+    ...(typeof controller.fork === 'function' ? { fork: controller } : {}),
+  }
+}
+
 /** Mount the Threadloom Host half. */
 export function apply(ctx: Context, config: ThreadloomConfig): void {
   const host = ctx as unknown as ButlerHostContext
@@ -79,13 +129,26 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     trashRoot: homePath('session-butler', 'trash'),
     query,
     persistence,
-    retentionDays: config.trashRetentionDays,
-    cascadeSubagents: config.cascadeSubagents,
-    permanentDelete: config.permanentDelete,
+    // Volatile handles: read through the getters so settings edits apply live.
+    retentionDays: () => readConfigValue(config.trashRetentionDays),
+    cascadeSubagents: () => readConfigValue(config.cascadeSubagents),
+    permanentDelete: () => readConfigValue(config.permanentDelete),
+    liveSettleTimeoutMs: () => readConfigValue(config.liveSettleTimeoutMs),
+    pluginVersion: PLUGIN_VERSION,
+    capabilities: () => ({
+      workspaceRegistry: host.get<WorkspaceRegistryPort>('workspaceRegistry') !== undefined,
+      sessionController: host.get<ButlerSessionCreation>('sessionController') !== undefined,
+      tools: host.get<ToolsPort>('tools') !== undefined,
+      commands: host.get<CommandsPort>('commands') !== undefined,
+    }),
     // Getters keep late-mounted services visible without delaying this plugin's
     // activation (the Web profile mounts some of them after the bundle rows).
     sessions: () => host.get<SessionsPort>('sessions'),
     agents: () => host.get<AgentsPort>('agents'),
+    deletionCoordinator: () => {
+      const owner = host.get<SessionDeletionCoordinatorPort>('sessionController')
+      return typeof owner?.withIdleSessionsReleased === 'function' ? owner : undefined
+    },
     workspace: () => host.get<WorkspaceRegistryPort>('workspaceRegistry'),
   })
 
@@ -99,13 +162,26 @@ export function apply(ctx: Context, config: ThreadloomConfig): void {
     host.inject(['tools'], (scope) => {
       const tools = scope.get<ToolsPort>('tools')
       if (tools === undefined) return
-      scope.effect(() => registerButlerTools(tools, service), 'session-butler: tools')
+      scope.effect(() => registerReadTools(tools, service), 'session-butler: read tools')
+    })
+    // The Web profile mounts `sessionController` after the bundle rows, so a
+    // one-shot capability probe at tools-mount time misses it (D-025). Bind the
+    // creation tools when both services are actually present.
+    host.inject(['tools', 'sessionController'], (scope) => {
+      const tools = scope.get<ToolsPort>('tools')
+      if (tools === undefined) return
+      const capabilities = sessionToolCapabilities(scope)
+      if (capabilities.create === undefined && capabilities.fork === undefined) return
+      scope.effect(() => registerCreationTools(tools, capabilities), 'session-butler: creation tools')
     })
   } else {
     mountBridge(host, service)
     const tools = host.get<ToolsPort>('tools')
     if (tools !== undefined) {
-      host.effect(() => registerButlerTools(tools, service), 'session-butler: tools')
+      host.effect(
+        () => registerButlerTools(tools, service, sessionToolCapabilities(host)),
+        'session-butler: tools',
+      )
     }
   }
 

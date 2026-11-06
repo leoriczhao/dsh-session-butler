@@ -15,7 +15,9 @@ export function subagentDescendants(trace: SessionLineageTraceLike): SessionReco
   const selected: SessionRecordLike[] = []
   const visit = (nodes: readonly SessionLineageNodeLike[]): void => {
     for (const node of nodes) {
-      if (node.session.header.origin === 'subagent') selected.push(node.session)
+      // A fork is an independent session; its descendants belong to that fork.
+      if (node.session.header.origin !== 'subagent') continue
+      selected.push(node.session)
       visit(node.descendants)
     }
   }

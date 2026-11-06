@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-butler",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "description": "Session management for DeepSeek Harness: browse, filter, inspect, batch-manage and trash sessions across workspaces, with read-only agent tools.",
   "type": "module",
   "main": "lib/index.js",
@@ -70,11 +70,13 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh": "0.2.2-alpha.2",
     "@deepseek-ai/schemastery": "^3.18.5",
     "@types/node": "^24.19.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "esbuild": "^0.28.2",
+    "playwright": "1.58.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "semver": "^7.7.2",
@@ -88,6 +90,7 @@
     "build:host": "tsc -p tsconfig.host.json",
     "build:client": "node scripts/build-client.mjs",
     "test": "node --test",
+    "test:e2e": "node --test --test-concurrency=1 e2e/composition.e2e.mjs e2e/live-ui.e2e.mjs",
     "validate:package": "node scripts/validate-package.mjs",
     "verify": "npm run typecheck && npm run clean && npm run build && npm test && npm run validate:package",
     "prepack": "npm run typecheck && npm run build"

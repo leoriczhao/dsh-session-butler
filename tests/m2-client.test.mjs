@@ -22,46 +22,76 @@ async function loadPlugin() {
   return registration.factory(specifier => table[specifier])
 }
 
-/** Fake Client context capturing locale/slot registrations and their cleanup. */
-function makeContext({ immediateInjection = true } = {}) {
+/** One fake DSH config form with a static first snapshot. */
+function makeConfigForm(value) {
+  const snapshot = { status: 'ready', value, revision: 7, writable: true }
+  return {
+    getSnapshot: () => snapshot,
+    subscribe() { return () => {} },
+    async mutate() { return true },
+    async set() { return true },
+  }
+}
+
+/**
+ * Fake Client context capturing locale/slot registrations and their cleanup.
+ * `immediateInjection: false` keeps every inject callback for late binding.
+ */
+function makeContext({ immediateInjection = true, configValue, language = 'zh' } = {}) {
   const localeRegistrations = []
   const localeCleanups = []
   const slotRegistrations = []
   const slotCleanups = []
   const injectionCallbacks = new Map()
-  const injectionCleanups = new Map()
   let effectCleanup
-  const observed = { opened: [], refreshes: 0 }
+  const observed = { opened: [], refreshes: 0, unarchived: [] }
+  const configForm = makeConfigForm(configValue ?? {
+    inlineMenuEnabled: true,
+    trashRetentionDays: 30,
+    cascadeSubagents: true,
+    permanentDelete: 'confirm',
+    liveSettleTimeoutMs: 3000,
+  })
   const ctx = {
     locale: {
       register(namespace, language, dict) {
         localeRegistrations.push({ namespace, language, dict })
-        const cleanup = () => { localeCleanups.push(`${namespace}:${language}`) }
-        return cleanup
+        return () => { localeCleanups.push(namespace + ':' + language) }
       },
       bind(namespace) {
-        const dict = localeRegistrations.find(entry => entry.namespace === namespace && entry.language === 'zh')?.dict ?? {}
+        const dict = localeRegistrations.find(entry => entry.namespace === namespace && entry.language === language)?.dict ?? {}
         return (key, vars) => {
           let text = dict[key] ?? key
-          for (const [name, value] of Object.entries(vars ?? {})) text = text.replaceAll(`{${name}}`, String(value))
+          for (const [name, value] of Object.entries(vars ?? {})) text = text.split('{' + name + '}').join(String(value))
           return text
         }
       },
     },
     slots: {
       inject(name, callback) {
-        injectionCallbacks.set(name, callback)
-        if (immediateInjection) injectionCleanups.set(name, callback())
-        return () => { injectionCleanups.get(name)?.() }
+        const list = injectionCallbacks.get(name) ?? []
+        list.push(callback)
+        injectionCallbacks.set(name, list)
+        let dispose
+        if (immediateInjection) dispose = callback()
+        return () => {
+          if (typeof dispose === 'function') dispose()
+        }
       },
       register(options, component) {
         slotRegistrations.push({ options, component })
-        const cleanup = () => { slotCleanups.push(options.name) }
-        return cleanup
+        return () => { slotCleanups.push(options.name) }
       },
     },
-    uiWorkspace: { openSession(id) { observed.opened.push(id) } },
+    uiWorkspace: {
+      openSession(id) { observed.opened.push(id) },
+      async unarchiveSession(id) { observed.unarchived.push(id) },
+    },
     sessions: { async refresh() { observed.refreshes += 1 } },
+    get(name) {
+      if (name === 'configForms') return { get: () => configForm }
+      return undefined
+    },
     effect(execute) {
       effectCleanup = execute()
       return () => { effectCleanup?.() }
@@ -74,18 +104,16 @@ function makeContext({ immediateInjection = true } = {}) {
     localeCleanups,
     slotRegistrations,
     slotCleanups,
+    injectionCallbacks,
     observed,
-    getInjectionCallback: name => injectionCallbacks.get(name),
+    configForm,
     getEffectCleanup: () => effectCleanup,
   }
 }
 
-test('apply registers the main panel and the sidebar row through independent injections', async () => {
+test('apply registers Codex-style settings sections and no library/nav entries', async () => {
   const plugin = await loadPlugin()
-  assert.ok(plugin.inject.includes('slots'))
-  assert.ok(plugin.inject.includes('locale'))
-  assert.ok(plugin.inject.includes('uiWorkspace'))
-  assert.ok(plugin.inject.includes('sessions'))
+  assert.deepEqual([...plugin.inject].sort(), ['locale', 'sessions', 'slots', 'uiWorkspace'])
 
   const fake = makeContext()
   plugin.apply(fake.ctx)
@@ -93,20 +121,52 @@ test('apply registers the main panel and the sidebar row through independent inj
   assert.equal(fake.localeRegistrations.length, 2)
   assert.deepEqual(fake.localeRegistrations.map(entry => entry.language).sort(), ['en', 'zh'])
   assert.ok(fake.localeRegistrations.every(entry => entry.namespace === 'session-butler'))
-  assert.ok(fake.localeRegistrations.every(entry => typeof entry.dict.title === 'string'))
+  assert.ok(fake.localeRegistrations.every(entry => typeof entry.dict['settings.archived'] === 'string'))
 
-  assert.equal(fake.slotRegistrations.length, 2)
-  const [panel, row] = fake.slotRegistrations
-  assert.equal(panel.options.name, 'main')
-  assert.equal(panel.options.key, 'session-butler')
-  assert.equal(panel.options.locale, 'session-butler')
-  const actions = panel.options.inject()
-  assert.deepEqual(Object.keys(actions).sort(), ['call', 'openSession', 'refreshSessions'])
-  assert.equal(row.options.name, 'sidebar.panellist')
-  assert.equal(row.options.id, 'session-butler')
-  assert.equal(row.options.label(), '会话管理')
-  assert.equal(typeof panel.component, 'function')
-  assert.equal(typeof row.component, 'function')
+  const names = fake.slotRegistrations.map(entry => entry.options.name)
+  assert.deepEqual(names.filter(name => name === 'settings.section').length, 2)
+  assert.equal(names.filter(name => name === 'sidebar.workspaces.session.menu.item').length, 1)
+  assert.deepEqual(names.filter(name => name.startsWith('plugins.')).sort(), [
+    'plugins.detail.badge',
+    'plugins.detail.section',
+  ])
+  assert.equal(names.includes('main'), false)
+  assert.equal(names.includes('sidebar.panellist'), false)
+  assert.equal(names.includes('plugins.row.config'), false)
+  assert.equal(names.includes('plugins.bundle.config'), false)
+  assert.equal(names.includes('plugins.detail.actions'), false)
+
+  const sections = fake.slotRegistrations.filter(entry => entry.options.name === 'settings.section')
+  assert.deepEqual(sections.map(entry => entry.options.id), ['archived-sessions', 'threadloom'])
+  assert.deepEqual(sections.map(entry => entry.options.order), [44, 45])
+  assert.deepEqual(sections.map(entry => entry.options.label()), ['已归档的聊天', 'Threadloom'])
+  assert.ok(sections.every(entry => typeof entry.component === 'function'))
+
+  const menu = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
+  assert.equal(menu.options.id, 'threadloom.delete')
+  assert.equal(menu.options.order, 470)
+})
+
+test('delete failure guidance is available in English and Chinese', async () => {
+  const plugin = await loadPlugin()
+  const fake = makeContext()
+  plugin.apply(fake.ctx)
+  const english = fake.localeRegistrations.find(entry => entry.language === 'en').dict
+  const chinese = fake.localeRegistrations.find(entry => entry.language === 'zh').dict
+
+  for (const dict of [english, chinese]) {
+    for (const key of ['menu.delete.running', 'menu.delete.inUse', 'menu.delete.locked', 'menu.delete.failed']) {
+      assert.match(dict[key], /\{title\}/, key)
+    }
+  }
+  assert.match(english['menu.delete.running'], /still in use/i)
+  assert.match(chinese['menu.delete.running'], /仍在使用中/)
+  assert.match(english['menu.delete.inUse'], /restart DSH/i)
+  assert.match(chinese['menu.delete.inUse'], /重启 DSH/)
+  assert.match(english['menu.delete.body'], /subagent/i)
+  assert.match(chinese['menu.delete.body'], /子代理/)
+  assert.match(english['menu.delete.failed'], /could not confirm whether/i)
+  assert.match(chinese['menu.delete.failed'], /无法确认.*是否已删除/)
 })
 
 test('each slot registers only after its own declaration', async () => {
@@ -116,21 +176,22 @@ test('each slot registers only after its own declaration', async () => {
   assert.equal(fake.slotRegistrations.length, 0)
   assert.equal(fake.localeRegistrations.length, 2)
 
-  // The sidebar slot is independent from `main`: declaring only the panel must
-  // not attempt to register `sidebar.panellist` (the real boot bug).
-  const cleanupPanel = fake.getInjectionCallback('main')()
-  assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), ['main'])
-  assert.equal(typeof cleanupPanel, 'function')
-  assert.equal(fake.slotRegistrations.some(entry => entry.options.name === 'sidebar.panellist'), false)
+  const sectionCallbacks = fake.injectionCallbacks.get('settings.section') ?? []
+  assert.equal(sectionCallbacks.length, 2)
+  for (const callback of sectionCallbacks) callback()
+  assert.deepEqual(
+    fake.slotRegistrations.map(entry => entry.options.name),
+    ['settings.section', 'settings.section'],
+  )
 
-  const cleanupRow = fake.getInjectionCallback('sidebar.panellist')()
-  assert.deepEqual(fake.slotRegistrations.map(entry => entry.options.name), ['main', 'sidebar.panellist'])
-  cleanupRow()
-  cleanupPanel()
-  assert.deepEqual(fake.slotCleanups, ['sidebar.panellist', 'main'])
+  const menuCallbacks = fake.injectionCallbacks.get('sidebar.workspaces.session.menu.item') ?? []
+  assert.equal(menuCallbacks.length, 1)
+  menuCallbacks[0]()
+  assert.equal(fake.slotRegistrations.length, 3)
+  assert.equal(fake.slotRegistrations[2].options.name, 'sidebar.workspaces.session.menu.item')
 })
 
-test('effect disposal releases locale and slot registrations', async () => {
+test('effect disposal releases locale and every slot registration', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext()
   plugin.apply(fake.ctx)
@@ -138,157 +199,68 @@ test('effect disposal releases locale and slot registrations', async () => {
   assert.equal(typeof cleanup, 'function')
   cleanup()
   assert.deepEqual(fake.localeCleanups.sort(), ['session-butler:en', 'session-butler:zh'])
-  assert.deepEqual(fake.slotCleanups, ['sidebar.panellist', 'main'])
+  assert.deepEqual(fake.slotCleanups, [
+    'plugins.detail.section',
+    'plugins.detail.badge',
+    'sidebar.workspaces.session.menu.item',
+    'settings.section',
+    'settings.section',
+  ])
 })
 
-test('the page renders session rows with the injected locale and actions', async () => {
+test('the archived-chats page renders the Codex settings surface', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext()
   plugin.apply(fake.ctx)
-  const panel = fake.slotRegistrations.find(entry => entry.options.name === 'main')
-  assert.ok(panel)
+  const section = fake.slotRegistrations.find(entry => entry.options.id === 'archived-sessions')
+  const html = renderToStaticMarkup(React.createElement(section.component, { close() {} }))
+  assert.match(html, /已归档的聊天/)
+  assert.match(html, /搜索已归档的聊天/)
+  assert.match(html, /全部删除/)
+  assert.match(html, /正在加载已归档聊天/)
+  assert.doesNotMatch(html, /会话库/)
+})
 
-  const t = (key, vars) => {
-    const dict = fake.localeRegistrations.find(entry => entry.language === 'zh').dict
-    let text = dict[key] ?? key
-    for (const [name, value] of Object.entries(vars ?? {})) text = text.replaceAll(`{${name}}`, String(value))
-    return text
-  }
-  const sessionState = {
-    ids: ['session-a', 'session-b', 'session-c'],
-    byId: {
-      'session-a': {
-        id: 'session-a', title: 'alpha', displayTitle: 'alpha', cwd: '/work/project', running: false,
-        blank: false, updatedAt: 1_700_000_000_000,
-      },
-      'session-b': {
-        id: 'session-b', displayTitle: 'beta', cwd: '/work/project', running: true,
-        blank: false, updatedAt: 1_700_000_100_000,
-      },
-      'session-c': {
-        id: 'session-c', displayTitle: 'gamma-child', cwd: '/work/project', running: false,
-        blank: false, updatedAt: 1_700_000_050_000, origin: 'subagent',
-      },
-    },
-    phase: 'ready',
-  }
-  const workspaceState = {
-    items: [{ workspaceId: 'ws-1', path: '/work/project', title: 'project', sessionIds: ['session-a', 'session-b'] }],
-    archivedSessionIds: [],
-    pinnedSessionIds: [],
-  }
+test('the config page renders the four plugin fields in Settings', async () => {
+  const plugin = await loadPlugin()
+  const fake = makeContext()
+  plugin.apply(fake.ctx)
+  const section = fake.slotRegistrations.find(entry => entry.options.id === 'threadloom')
+  const html = renderToStaticMarkup(React.createElement(section.component, { close() {} }))
+  assert.match(html, /Threadloom 设置/)
+  assert.match(html, /回收站保留天数/)
+  assert.match(html, /等待会话释放超时/)
+  assert.match(html, /级联删除子代理会话/)
+  assert.match(html, /会话行菜单动作/)
+  assert.doesNotMatch(html, /永久删除/)
+})
+
+test('the row menu matches host delete icon and session labels in both languages', async () => {
+  const plugin = await loadPlugin()
   const props = {
-    useSessions: select => select(sessionState),
-    useWorkspaces: select => select(workspaceState),
-    t,
-    call: async () => ({ permanentDelete: 'disabled', retentionDays: 30, cascadeSubagents: true, workspaceAvailable: true }),
-    openSession: () => {},
-    refreshSessions: () => {},
+    sessionId: 'session-a',
+    displayTitle: 'alpha',
+    useMenuOpenState: () => [false, () => {}],
   }
-  const html = renderToStaticMarkup(React.createElement(panel.component, props))
-  assert.match(html, /会话管理/)
-  assert.match(html, /alpha/)
-  assert.match(html, /移入回收站/)
-  assert.match(html, /beta/)
-  // Subagent sessions stay hidden until the filter is enabled.
-  assert.doesNotMatch(html, /gamma-child/)
-})
 
-/** Bind the Chinese dictionary for direct component rendering. */
-function zhTranslator(fake) {
-  return (key, vars) => {
-    const dict = fake.localeRegistrations.find(entry => entry.language === 'zh').dict
-    let text = dict[key] ?? key
-    for (const [name, value] of Object.entries(vars ?? {})) text = text.replaceAll(`{${name}}`, String(value))
-    return text
+  for (const [language, label] of [['zh', '删除会话'], ['en', 'Delete session']]) {
+    const fake = makeContext({ language })
+    plugin.apply(fake.ctx)
+    const menu = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
+    const html = renderToStaticMarkup(React.createElement(menu.component, props))
+    const button = html.match(/<button[^>]*role="menuitem"[^>]*>.*?<\/button>/)?.[0]
+    assert.ok(button, `${language} row renders a menu item`)
+    assert.equal((html.match(/role="menuitem"/g) ?? []).length, 1)
+    assert.doesNotMatch(html, /回收站|会话库|会话详情/)
+    assert.match(button, /<svg[^>]*width="14"[^>]*height="14"[^>]*viewBox="0 0 16 16"[^>]*aria-hidden="true"/)
+    assert.match(button, /stroke="currentColor"/)
+    assert.match(button, /M1\.28149 3\.88831H14\.7187/)
+    assert.equal((button.match(/<path /g) ?? []).length, 5)
+    assert.ok(button.endsWith(`</svg>${label}</button>`))
   }
-}
 
-test('the page renders batch selection affordances for both tabs', async () => {
-  const plugin = await loadPlugin()
-  const fake = makeContext()
-  plugin.apply(fake.ctx)
-  const panel = fake.slotRegistrations.find(entry => entry.options.name === 'main')
-  const t = zhTranslator(fake)
-  const sessionState = {
-    ids: ['session-a'],
-    byId: {
-      'session-a': {
-        id: 'session-a', displayTitle: 'alpha', cwd: '/work/project', running: false,
-        blank: false, updatedAt: 1_700_000_000_000,
-      },
-    },
-    phase: 'ready',
-  }
-  const workspaceState = { items: [], archivedSessionIds: [], pinnedSessionIds: [] }
-  const html = renderToStaticMarkup(React.createElement(panel.component, {
-    useSessions: select => select(sessionState),
-    useWorkspaces: select => select(workspaceState),
-    t,
-    call: async () => ({ permanentDelete: 'disabled', retentionDays: 30, cascadeSubagents: true, workspaceAvailable: true }),
-    openSession: () => {},
-    refreshSessions: () => {},
-  }))
-  assert.match(html, /全选当前列表/)
-  assert.match(html, /已选 0 项/)
-  assert.match(html, /详情/)
-  // Two filter toggles, one select-all box, and one box per visible row.
-  assert.equal((html.match(/type="checkbox"/g) ?? []).length, 4)
-  // Batch actions stay hidden until something is selected.
-  assert.doesNotMatch(html, /移入回收站（1）/)
-})
-
-test('SessionDetailView renders figures, token totals, size and lineage', async () => {
-  const plugin = await loadPlugin()
-  const fake = makeContext()
-  plugin.apply(fake.ctx)
-  assert.equal(typeof plugin.SessionDetailView, 'function')
-  const t = zhTranslator(fake)
-  const detail = {
-    id: 'session-root',
-    headerSnapshot: {
-      id: 'session-root',
-      cwd: '/work/project',
-      createdAt: 1_700_000_000_000,
-      agentPreset: 'build',
-    },
-    formatStatus: 'migration-required',
-    live: true,
-    descendantIds: ['session-child'],
-    enrichment: { status: 'partial', reason: 'read-failed' },
-    stats: {
-      turns: 2,
-      steps: 3,
-      userMessages: 2,
-      assistantMessages: 2,
-      toolCalls: 4,
-      toolResults: 4,
-      tokens: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5 },
-      sizeBytes: 4096,
-      eventCount: 20,
-    },
-    lineage: {
-      complete: false,
-      missingParentId: 'session-gone',
-      ancestors: [{ id: 'session-parent', cwd: '/work/project' }],
-      descendants: [{
-        id: 'session-child',
-        origin: 'subagent',
-        agentPreset: 'build',
-        descendants: [{ id: 'session-grandchild', origin: 'subagent', descendants: [] }],
-      }],
-    },
-  }
-  const html = renderToStaticMarkup(React.createElement(plugin.SessionDetailView, { detail, t }))
-  assert.match(html, /会话详情|ID/)
-  assert.match(html, /session-root/)
-  assert.match(html, /创建时间/)
-  assert.match(html, /build/)
-  assert.match(html, /部分统计不可用（read-failed）/)
-  assert.match(html, /轮次 2 · 步骤 3 · 用户 2 · 助手 2 · 工具 4\/4/)
-  assert.match(html, /Token 输入 100 · 输出 50 · 缓存读 10 · 缓存写 5/)
-  assert.match(html, /日志 4\.0 KB · 20 个事件/)
-  assert.match(html, /父会话 session-gone 已不可用/)
-  assert.match(html, /子代理后代（2）/)
-  assert.match(html, /session-grandchild/)
+  const disabled = makeContext({ configValue: { inlineMenuEnabled: false } })
+  plugin.apply(disabled.ctx)
+  const disabledMenu = disabled.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
+  assert.equal(renderToStaticMarkup(React.createElement(disabledMenu.component, props)), '')
 })

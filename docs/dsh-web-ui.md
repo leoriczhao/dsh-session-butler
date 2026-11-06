@@ -2,6 +2,8 @@
 
 > ⛔ **已被取代（2026-10-27）**：本文是第一版调研，存在两个已确认的问题：① **表面混淆**（把 GUI/Remote/Host API 的「有」当成 agent tool 面的「有」）；② **版本口径混淆**（把 checkout HEAD 行为写成 `0.2.1-rc.3` 发布版事实，例如 fork 的 `parentSession`、`/api/session.markdown`）。
 > 结论以 [`research/dsh-session-management-v2.md`](../research/dsh-session-management-v2.md) 为准；本文仅保留作源码索引。
+>
+> **2026-10-29 追加**：本文「`main` + `sidebar.panellist` 是唯一整页入口」的产品结论已被 D-023 取代——ChatGPT/Codex 没有独立「会话管理」按钮，DSH 0.2.2 又提供 `sidebar.workspaces.session.menu.item` 与 `sidebar.workspaces.session.row.action` 第三方扩展点；当前实现改为会话行 "..." 菜单内联 + `ctx.layout.selectPanel`。slot 源码索引仍然有效。
 
 > 调研对象：`/home/leoric/code/deepseek-harness`（DSH 0.2.1-rc.3，即当前 `dsh web` 进程的工作目录；`pnpm dsh web --no-open` 以 tsx 直接跑源码，见 `ps` 中 cwd）。
 > 目标：回答「会话管理 UI 该怎么挂到 DSH Web 上」，给出**可直接照抄的 slot key、注册选项、props、服务签名、客户端构建约束与风险**。

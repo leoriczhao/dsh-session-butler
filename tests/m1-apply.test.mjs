@@ -8,15 +8,18 @@ import { apply } from '../lib/index.js'
 import { SessionButlerService } from '../lib/host/service.js'
 
 /** Fake Host context exposing exactly the services `apply` probes. */
-function fakeHost({ home, headers }) {
+function fakeHost({ home, headers, deferSessionController = false }) {
   const provided = new Map()
   const commands = []
   const effects = []
   const routes = []
   const injections = []
   const tools = []
+  const extras = new Map()
+  const deferredInjections = []
   const ctx = {
     get(name) {
+      if (extras.has(name)) return extras.get(name)
       switch (name) {
         case 'dshHomePath':
           return (...segments) => path.join(home, ...segments)
@@ -69,11 +72,77 @@ function fakeHost({ home, headers }) {
     },
     inject(names, callback) {
       injections.push(names)
+      if (deferSessionController && names.includes('sessionController')) {
+        deferredInjections.push({ names, callback })
+        return () => {}
+      }
       return callback(this)
     },
   }
-  return { ctx, provided, commands, effects, routes, injections, tools }
+  return { ctx, provided, commands, effects, routes, injections, tools, extras, deferredInjections }
 }
+
+test('apply binds the creation tools when sessionController mounts after tools', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'butler-apply-late-'))
+  try {
+    const fake = fakeHost({ home, headers: {}, deferSessionController: true })
+    apply(fake.ctx, { trashRetentionDays: 30, cascadeSubagents: true, permanentDelete: 'disabled' })
+    assert.deepEqual(fake.tools.map(tool => tool.name), ['session_butler_list', 'session_butler_detail'])
+
+    fake.extras.set('sessionController', {
+      async create() { return { sessionId: 'session-new' } },
+      async fork() { return { sessionId: 'session-fork', sourceSessionId: 'session-current' } },
+    })
+    assert.equal(fake.deferredInjections.length, 1)
+    for (const deferred of fake.deferredInjections) {
+      assert.deepEqual(deferred.names, ['tools', 'sessionController'])
+      deferred.callback(fake.ctx)
+    }
+    assert.deepEqual(fake.tools.map(tool => tool.name), [
+      'session_butler_list',
+      'session_butler_detail',
+      'session_butler_new',
+      'session_butler_fork',
+    ])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('apply wires the caller Workspace into session_butler_new', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'butler-apply-workspace-'))
+  try {
+    const fake = fakeHost({ home, headers: {} })
+    const created = []
+    fake.extras.set('workspaceRegistry', {
+      async archiveSession() {},
+      async unarchiveSession() {},
+      async pinSession() {},
+      async unpinSession() {},
+      list() {
+        return [{ id: 'ws-proj', path: '/work/proj', sessionIds: ['session-caller'] }]
+      },
+    })
+    fake.extras.set('sessionController', {
+      async create(request) {
+        created.push(request)
+        return { sessionId: 'session-new' }
+      },
+    })
+
+    apply(fake.ctx, { trashRetentionDays: 30, cascadeSubagents: true, permanentDelete: 'disabled' })
+
+    const newTool = fake.tools.find(tool => tool.name === 'session_butler_new')
+    assert.ok(newTool, 'session_butler_new is registered while sessionController is present')
+    const value = await newTool.execute({}, {
+      agent: { session: { id: 'session-caller', header: { id: 'session-caller', cwd: '/work/proj' } } },
+    })
+    assert.deepEqual(created, [{ workspaceId: 'ws-proj' }])
+    assert.deepEqual(value, { sessionId: 'session-new', cwd: '/work/proj' })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
 
 test('apply exposes the trash service and registers /session-butler', async () => {
   const home = await mkdtemp(path.join(tmpdir(), 'butler-apply-'))
@@ -91,7 +160,7 @@ test('apply exposes the trash service and registers /session-butler', async () =
     assert.equal(fake.effects.length, 3)
     assert.equal(fake.commands.length, 1)
     assert.equal(fake.commands[0].name, 'session-butler')
-    assert.deepEqual(fake.injections, [['webServer', 'connection'], ['tools']])
+    assert.deepEqual(fake.injections, [['webServer', 'connection'], ['tools'], ['tools', 'sessionController']])
     assert.deepEqual(fake.tools.map(tool => tool.name), ['session_butler_list', 'session_butler_detail'])
     assert.equal(fake.routes.length, 1)
     assert.equal(fake.routes[0].path, '/session-butler/api')

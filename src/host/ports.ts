@@ -12,6 +12,8 @@
  * @module dsh-session-butler/host/ports
  */
 
+import type { ButlerParameterJsonSchema } from './schema.js'
+
 /** Detached session identity metadata (rc.2 `dsh-session` SessionHeader). */
 export interface SessionHeaderLike {
   readonly id: string
@@ -98,6 +100,20 @@ export interface SessionPersistenceSnapshotLike {
   readonly sizeBytes?: number
 }
 
+/** One native backend deletion reservation; its ID guard lasts until close. */
+export interface SessionDeletionHandleLike {
+  readonly header: SessionHeaderLike
+  readonly operationId: string
+  readonly committed: boolean
+  commit(): Promise<unknown>
+  close(): Promise<void>
+}
+
+/** Host-owned admission fence and release of its own idle Agent handles. */
+export interface SessionDeletionCoordinatorPort {
+  withIdleSessionsReleased<T>(sessionIds: readonly string[], operation: () => Promise<T>): Promise<T>
+}
+
 /** The `sessionPersistence` methods Threadloom consumes. */
 export interface SessionPersistencePort {
   open(sessionId: string, access: 'write', options?: { signal?: AbortSignal }): Promise<{ close(): Promise<void> }>
@@ -107,6 +123,8 @@ export interface SessionPersistencePort {
   ): Promise<SessionPersistenceSnapshotLike | undefined>
   /** Every stored session visible to this process, in no promised order. */
   list(options?: { signal?: AbortSignal }): Promise<readonly SessionPersistenceSnapshotLike[]>
+  /** Optional native transaction; absent on older DSH backends. */
+  prepareDelete?(sessionId: string, options?: { signal?: AbortSignal }): Promise<SessionDeletionHandleLike>
 }
 
 /** One live Session object (only the fields Threadloom reads). */
@@ -146,6 +164,19 @@ export interface WorkspaceRegistryPort {
   /** Logical archive set; absent on compositions whose registry predates the getter. */
   readonly archivedSessionIds?: readonly string[]
   readonly pinnedSessionIds?: readonly string[]
+  /**
+   * Durable Workspace rows; used to place a tool-created Session into the
+   * caller's Workspace instead of leaving it ungrouped. Optional so older
+   * compositions keep working.
+   */
+  list?(): readonly WorkspaceDescriptorLike[]
+}
+
+/** The Workspace fields Threadloom reads when resolving a caller's Workspace. */
+export interface WorkspaceDescriptorLike {
+  readonly id?: string
+  readonly path?: string
+  readonly sessionIds?: readonly string[]
 }
 
 /** One `/session-butler` command result (rc.2 `CommandResult`). */
@@ -192,21 +223,28 @@ export interface ConnectionPort {
   requestRejection(request: { headers: import('node:http').IncomingHttpHeaders }): 401 | 403 | undefined
 }
 
-/** One author-facing tool parameter (rc.2 `ParameterSchemaSpec` property). */
-export interface ButlerToolParameter {
-  readonly type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
-  readonly description?: string
-  readonly required?: true
-  readonly enum?: readonly (string | number | boolean | null)[]
-  readonly items?: ButlerToolParameter
-  readonly properties?: Readonly<Record<string, ButlerToolParameter>>
-  readonly additionalProperties?: boolean
-}
-
 /** One model-facing tool result block. */
 export interface ButlerToolTextContent {
   readonly type: 'text'
   readonly text: string
+}
+
+/** Live Session object subset exposed to a tool call (header carries cwd/preset). */
+export interface ButlerSessionLike {
+  readonly id?: string
+  readonly header?: SessionHeaderLike
+}
+
+/**
+ * Tool execution context subset. The Host sets `agent` for every root model
+ * call; older/other compositions may omit it, so session-dependent tools must
+ * reject the call instead of guessing a working directory.
+ */
+export interface ButlerToolRunContext {
+  readonly signal?: AbortSignal
+  readonly agent?: {
+    readonly session?: ButlerSessionLike
+  }
 }
 
 /**
@@ -217,12 +255,77 @@ export interface ButlerToolTextContent {
 export interface ButlerToolDefinition {
   readonly name: string
   readonly description: string
-  readonly parameters: Readonly<Record<string, ButlerToolParameter>>
+  /** Object-rooted raw JSON Schema the Host sends to the model (not the authoring DSL). */
+  readonly parameters: ButlerParameterJsonSchema
   readonly output: {
     readonly schema: Readonly<Record<string, unknown>>
     render(args: unknown, value: unknown): readonly ButlerToolTextContent[]
   }
-  execute(args: unknown, exec: { readonly signal?: AbortSignal }): unknown
+  execute(args: unknown, exec: ButlerToolRunContext): unknown
+}
+
+/** Request subset of the Host `sessionController.create` Remote (new conversation). */
+export interface ButlerSessionCreateRequest {
+  /** Caller's Workspace id when resolvable; exactly one of workspaceId/cwd is sent. */
+  readonly workspaceId?: string
+  readonly cwd?: string
+  readonly agentPreset?: string
+}
+
+/** Successful creation result from `sessionController.create`. */
+export interface ButlerSessionCreateResult {
+  readonly sessionId: string
+  readonly agentPreset?: string
+}
+
+/**
+ * Creation-only dependency used by `session_butler_new`. The tool never accepts
+ * an arbitrary path or workspace id: it reuses the calling Session's own cwd,
+ * Workspace, and preset, so the new Session cannot escape the caller's scope.
+ */
+export interface ButlerSessionCreation {
+  create(request: ButlerSessionCreateRequest): Promise<ButlerSessionCreateResult>
+  /**
+   * Optional Workspace lookup for the child Session. When present, `new`
+   * attaches the child to the caller's Workspace (falling back to a Workspace
+   * at the same cwd) so it appears under that Workspace in the Web sidebar
+   * instead of the ungrouped bucket.
+   */
+  resolveWorkspace?(request: { readonly sessionId?: string; readonly cwd: string }): string | undefined
+}
+
+/** Request subset of the Host `sessionController.fork` Remote (one prefix → a new Session). */
+export interface ButlerSessionForkRequest {
+  /** Source Session to branch; Threadloom tools always pass the caller's own Session. */
+  readonly sessionId: string
+  /** Exact inclusive source event seq; omitted selects the latest completed-turn prefix. */
+  readonly atSeq?: number
+}
+
+/** Successful fork result from `sessionController.fork`. */
+export interface ButlerSessionForkResult {
+  readonly sessionId: string
+}
+
+/**
+ * Fork-only dependency used by `session_butler_fork`. The tool branches the
+ * calling Session and never accepts an arbitrary session id, so a model cannot
+ * fork a conversation it is not running in.
+ */
+export interface ButlerSessionForking {
+  fork(request: ButlerSessionForkRequest): Promise<ButlerSessionForkResult>
+}
+
+/**
+ * Optional `sessionController` capabilities advertised to the model. Both are
+ * non-destructive conversation creation; a composition without the Web session
+ * controller simply gets the read-only tools.
+ */
+export interface ButlerToolCapabilities {
+  /** New empty Session beside the caller (`session_butler_new`). */
+  readonly create?: ButlerSessionCreation
+  /** Branch of the caller's conversation (`session_butler_fork`). */
+  readonly fork?: ButlerSessionForking
 }
 
 /** The `tools` registry subset Threadloom consumes. */

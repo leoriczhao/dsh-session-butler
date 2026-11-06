@@ -30,7 +30,19 @@ const MAX_BODY_BYTES = 64 * 1024
 /** Absolute prefix path of the bridge. */
 const ROUTE_PATH = `/${API_PREFIX}`
 
-const METHODS = ['status', 'list', 'detail', 'trash', 'trash-many', 'restore', 'restore-many', 'purge', 'list-trash'] as const
+const METHODS = [
+  'status',
+  'list',
+  'detail',
+  'delete',
+  'delete-many',
+  'trash',
+  'trash-many',
+  'restore',
+  'restore-many',
+  'purge',
+  'list-trash',
+] as const
 type BridgeMethod = (typeof METHODS)[number]
 
 /** A request body that exceeds the body budget. */
@@ -151,25 +163,33 @@ function optionalStringField(body: unknown, name: string): string | undefined {
 async function dispatch(service: SessionButlerService, method: BridgeMethod, body: unknown): Promise<unknown> {
   switch (method) {
     case 'status':
-      return service.config
+      return service.health()
     case 'list-trash':
       return service.listTrash()
     case 'list': {
       const query = optionalStringField(body, 'query')
       const cwd = optionalStringField(body, 'cwd')
       const includeArchived = optionalBooleanField(body, 'includeArchived')
+      const archivedOnly = optionalBooleanField(body, 'archivedOnly')
       const includeSubagents = optionalBooleanField(body, 'includeSubagents')
       const limit = optionalNumberField(body, 'limit')
       return service.listSessions({
         ...(query === undefined ? {} : { query }),
         ...(cwd === undefined ? {} : { cwd }),
         ...(includeArchived === undefined ? {} : { includeArchived }),
+        ...(archivedOnly === undefined ? {} : { archivedOnly }),
         ...(includeSubagents === undefined ? {} : { includeSubagents }),
         ...(limit === undefined ? {} : { limit }),
       })
     }
     case 'detail':
       return service.detail(field(body, 'sessionId'))
+    case 'delete':
+      return service.delete(field(body, 'sessionId'), { cascade: booleanField(body, 'cascade', service.config.cascadeSubagents) })
+    case 'delete-many':
+      return service.deleteMany(stringArrayField(body, 'sessionIds'), {
+        cascade: booleanField(body, 'cascade', service.config.cascadeSubagents),
+      })
     case 'trash':
       return service.trash(field(body, 'sessionId'), { cascade: booleanField(body, 'cascade', service.config.cascadeSubagents) })
     case 'trash-many':
@@ -219,6 +239,10 @@ async function handle(
   try {
     sendJson(response, 200, { ok: true, value: await dispatch(service, method, body) })
   } catch (error) {
+    service.recordError(
+      error instanceof ButlerError ? error.code : 'internal',
+      error instanceof Error ? error.message : String(error),
+    )
     if (error instanceof ButlerError && error.code === 'invalid-request') {
       sendProtocolError(response, 400, error.code, error.message)
     } else if (error instanceof ButlerError) {

@@ -9,6 +9,7 @@
  * @module dsh-session-butler/host/service
  */
 
+import { accessSync, constants as fsConstants, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
@@ -24,6 +25,8 @@ import type {
   SessionObservationLike,
   SessionPersistencePort,
   SessionPersistenceSnapshotLike,
+  SessionDeletionCoordinatorPort,
+  SessionDeletionHandleLike,
   SessionQueryPort,
   SessionRecordLike,
   SessionsPort,
@@ -50,14 +53,77 @@ export interface SessionButlerOptions {
   /** Live services may be late-bound: pass a getter when activation order is unknown. */
   readonly sessions?: SessionsPort | (() => SessionsPort | undefined)
   readonly agents?: AgentsPort | (() => AgentsPort | undefined)
+  readonly deletionCoordinator?: SessionDeletionCoordinatorPort | (() => SessionDeletionCoordinatorPort | undefined)
   /** Optional workspace services: absent in headless / ACP compositions. */
   readonly workspace?: WorkspaceRegistryPort | (() => WorkspaceRegistryPort | undefined)
+  /** Volatile configuration values are passed as getters so settings edits apply without a remount. */
+  readonly retentionDays: number | (() => number)
+  readonly cascadeSubagents: boolean | (() => boolean)
+  readonly permanentDelete: 'disabled' | 'confirm' | (() => 'disabled' | 'confirm')
+  readonly now?: () => number
+  /** How long to wait for a loaded session to be released before refusing deletion. */
+  readonly liveSettleTimeoutMs?: number | (() => number)
+  /** Installed package version, shown in the health snapshot. */
+  readonly pluginVersion?: string
+  /** Capabilities the composition provides beyond this service's own ports. */
+  readonly capabilities?: () => ButlerCapabilities
+}
+
+/** Optional registries reported by the health snapshot. */
+export interface ButlerCapabilities {
+  readonly workspaceRegistry?: boolean
+  readonly sessionController?: boolean
+  readonly tools?: boolean
+  readonly commands?: boolean
+}
+
+/** One recent bridge/domain error kept for diagnostics. */
+export interface ButlerErrorRecord {
+  readonly code: string
+  readonly at: number
+  readonly message?: string
+}
+
+/** Functional health snapshot shared by the web page and the plugin manager. */
+export interface ButlerHealth {
   readonly retentionDays: number
   readonly cascadeSubagents: boolean
   readonly permanentDelete: 'disabled' | 'confirm'
-  readonly now?: () => number
-  /** How long to wait for `stopActivity` before refusing a running-session delete. */
-  readonly liveSettleTimeoutMs?: number
+  readonly workspaceAvailable: boolean
+  readonly ok: boolean
+  readonly version: string
+  readonly host: { readonly ok: boolean; readonly error?: string }
+  readonly bridge: { readonly ok: boolean; readonly mounted: boolean }
+  readonly storage: {
+    readonly trashWritable: boolean
+    readonly sessionsRootWritable: boolean
+    readonly trashCount: number
+  }
+  readonly backends: {
+    readonly sessionQuery: boolean
+    readonly workspaceRegistry: boolean
+    readonly sessionController: boolean
+    readonly nativeDeletion: boolean
+    readonly tools: boolean
+    readonly commands: boolean
+  }
+  readonly counts: {
+    readonly sessions: number
+    readonly trashed: number
+    readonly live: number
+  }
+  readonly errors: readonly ButlerErrorRecord[]
+}
+
+/** Probe one directory for write access, optionally creating it first. */
+function directoryWritable(target: string, create: boolean): boolean {
+  try {
+    if (create) mkdirSync(target, { recursive: true })
+    accessSync(target, fsConstants.W_OK)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Result of moving sessions into the trash. */
@@ -75,6 +141,11 @@ export interface RestoreResult {
 /** Result of permanently removing one trashed session. */
 export interface PurgeResult {
   readonly purged: string
+}
+
+/** Result of permanently deleting live sessions (the trash is emptied immediately). */
+export interface DeleteResult {
+  readonly deleted: readonly string[]
 }
 
 /** One listed trash entry. */
@@ -219,6 +290,7 @@ function queryFailure(error: unknown, context: string): ButlerError {
 
 /** The M1 trash service exposed as `ctx.sessionButler`. */
 export class SessionButlerService {
+  private readonly recentErrors: ButlerErrorRecord[] = []
   private readonly locator: SessionLocator
   private readonly trashStore: TrashStore
   private readonly now: () => number
@@ -234,6 +306,32 @@ export class SessionButlerService {
 
   private get workspace(): WorkspaceRegistryPort | undefined {
     return typeof this.options.workspace === 'function' ? this.options.workspace() : this.options.workspace
+  }
+
+  private get deletionCoordinator(): SessionDeletionCoordinatorPort | undefined {
+    return typeof this.options.deletionCoordinator === 'function'
+      ? this.options.deletionCoordinator() : this.options.deletionCoordinator
+  }
+
+  /** Current retention window; read live because the settings form edits a Volatile handle. */
+  private get retentionDays(): number {
+    return typeof this.options.retentionDays === 'function' ? this.options.retentionDays() : this.options.retentionDays
+  }
+
+  /** Current cascade default; read live for the same reason. */
+  private get cascadeSubagents(): boolean {
+    return typeof this.options.cascadeSubagents === 'function' ? this.options.cascadeSubagents() : this.options.cascadeSubagents
+  }
+
+  /** Current permanent-delete policy; read live for the same reason. */
+  private get permanentDelete(): 'disabled' | 'confirm' {
+    return typeof this.options.permanentDelete === 'function' ? this.options.permanentDelete() : this.options.permanentDelete
+  }
+
+  /** Current settle timeout; read live for the same reason. */
+  private get liveSettleTimeoutMs(): number {
+    if (typeof this.options.liveSettleTimeoutMs === 'function') return this.options.liveSettleTimeoutMs()
+    return this.options.liveSettleTimeoutMs ?? 3_000
   }
 
   constructor(private readonly options: SessionButlerOptions) {
@@ -255,10 +353,76 @@ export class SessionButlerService {
     readonly workspaceAvailable: boolean
   } {
     return {
-      retentionDays: this.options.retentionDays,
-      cascadeSubagents: this.options.cascadeSubagents,
-      permanentDelete: this.options.permanentDelete,
+      retentionDays: this.retentionDays,
+      cascadeSubagents: this.cascadeSubagents,
+      permanentDelete: this.permanentDelete,
       workspaceAvailable: this.workspace !== undefined,
+    }
+  }
+
+  /** Keep the most recent bridge/domain failures for the health snapshot. */
+  recordError(code: string, message?: string): void {
+    this.recentErrors.push({
+      code,
+      at: this.now(),
+      ...(message === undefined ? {} : { message }),
+    })
+    if (this.recentErrors.length > 20) this.recentErrors.shift()
+  }
+
+  /**
+   * Build the functional health snapshot shown on the management page and in
+   * the DSH Plugins page.
+   *
+   * Counts and storage probes are best-effort: an unreachable persistence
+   * service must not make the snapshot itself fail, because the snapshot is the
+   * surface used to diagnose exactly that condition.
+   * @returns the current health facts, including the last 20 recorded errors.
+   */
+  async health(): Promise<ButlerHealth> {
+    let sessions = 0
+    try {
+      sessions = (await this.options.persistence.list()).length
+    } catch {
+      // Reported as a zero count; the page still loads and shows other facts.
+    }
+    let trashed = 0
+    try {
+      trashed = (await this.trashStore.list()).entries.length
+    } catch {
+      // Same contract as the session count.
+    }
+    let live = 0
+    try {
+      live = this.sessions?.list?.().length ?? 0
+    } catch {
+      live = 0
+    }
+    const storage = {
+      trashWritable: directoryWritable(this.options.trashRoot, true),
+      sessionsRootWritable: directoryWritable(this.options.sessionsRoot, false),
+      trashCount: trashed,
+    }
+    const caps = this.options.capabilities?.() ?? {}
+    const backends = {
+      sessionQuery: true,
+      workspaceRegistry: caps.workspaceRegistry ?? this.workspace !== undefined,
+      sessionController: caps.sessionController ?? false,
+      nativeDeletion: typeof this.options.persistence.prepareDelete === 'function' && this.deletionCoordinator !== undefined,
+      tools: caps.tools ?? false,
+      commands: caps.commands ?? false,
+    }
+    const ok = storage.trashWritable && storage.sessionsRootWritable
+    return {
+      ...this.config,
+      ok,
+      version: this.options.pluginVersion ?? 'unknown',
+      host: { ok: true },
+      bridge: { ok: true, mounted: true },
+      storage,
+      backends,
+      counts: { sessions, trashed, live },
+      errors: [...this.recentErrors],
     }
   }
 
@@ -356,12 +520,14 @@ export class SessionButlerService {
     const query = filters.query?.trim().toLowerCase()
     const cwdFilter = filters.cwd?.trim().toLowerCase()
     const includeArchived = filters.includeArchived === true
+    const archivedOnly = filters.archivedOnly === true
     const includeSubagents = filters.includeSubagents !== false
     const rows = [...byId.values()].filter((row) => {
       const { header } = row
       const subagent = header.origin === 'subagent'
       if (subagent && !includeSubagents) return false
-      if (!includeArchived && archived.has(header.id)) return false
+      if (archivedOnly && !archived.has(header.id)) return false
+      if (!includeArchived && !archivedOnly && archived.has(header.id)) return false
       if (cwdFilter !== undefined && (header.cwd ?? '').toLowerCase().startsWith(cwdFilter) === false) return false
       if (query !== undefined) {
         const haystack = `${header.id}\n${header.cwd ?? ''}`.toLowerCase()
@@ -518,8 +684,8 @@ export class SessionButlerService {
     const listing = await this.trashStore.list()
     const now = this.now()
     const entries = listing.entries.map((entry): TrashListEntry => {
-      const expiresAt = this.options.retentionDays > 0
-        ? entry.meta.deletedAt + this.options.retentionDays * DAY_MS
+      const expiresAt = this.retentionDays > 0
+        ? entry.meta.deletedAt + this.retentionDays * DAY_MS
         : null
       return {
         id: entry.meta.id,
@@ -557,7 +723,7 @@ export class SessionButlerService {
     }
     const rootRecord = await this.readRootRecord(sessionId)
     if (rootRecord.formatStatus === 'migration-required') throw migrationError([sessionId])
-    const cascade = options.cascade ?? this.options.cascadeSubagents
+    const cascade = options.cascade ?? this.cascadeSubagents
     const descendants = cascade ? await this.readDescendants(sessionId) : []
     const migrationBlocked = descendants
       .filter(record => record.formatStatus === 'migration-required')
@@ -565,51 +731,192 @@ export class SessionButlerService {
     if (migrationBlocked.length > 0) throw migrationError(migrationBlocked)
 
     const records: SessionRecordLike[] = [rootRecord, ...descendants]
-    const archived: string[] = []
-    let succeeded = false
-    try {
-      for (const record of records) await this.settleRunning(record.header.id, archived)
-      for (const record of records) await this.probeLease(record.header.id)
-      const located = await this.locator.locateAll(records)
-      for (const target of located) await this.trashStore.assertFree(target)
+    for (const record of records) await this.waitForRelease(record.header.id)
+    for (const record of records) await this.probeLease(record.header.id)
+    const located = await this.locator.locateAll(records)
+    for (const target of located) await this.trashStore.assertFree(target)
 
-      const deletedAt = this.now()
-      const descendantIds = descendants.map(record => record.header.id)
-      const moved: TrashEntry[] = []
+    const deletedAt = this.now()
+    const descendantIds = descendants.map(record => record.header.id)
+    const moved: TrashEntry[] = []
+    try {
+      for (const target of located) {
+        const isRoot = target.id === sessionId
+        moved.push(await this.trashStore.moveIn(target, {
+          deletedAt,
+          ...(isRoot ? {} : { cascadeOf: sessionId }),
+          descendants: isRoot ? descendantIds : [],
+        }))
+      }
+    } catch (error) {
+      for (const entry of [...moved].reverse()) {
+        try {
+          await this.trashStore.moveOut(entry)
+        } catch {
+          // Rollback is best-effort; the original failure stays authoritative.
+        }
+      }
+      throw error
+    }
+
+    for (const target of located) await this.clearWorkspaceState(target.id)
+    return { trashed: located.map(target => target.id), trashRoot: this.options.trashRoot }
+  }
+
+  /**
+   * Permanently delete one session (UI "Delete"): the safe trash pipeline moves
+   * the files out of the corpus, then the trash entry is purged immediately, so
+   * no user-visible trash entry remains. The `permanentDelete` config is not
+   * consulted: the caller has already shown an irreversible-action confirmation.
+   * @param sessionId - session to delete.
+   * @param options - cascade/current-session guards.
+   * @returns ids removed from the corpus (root + cascaded descendants).
+   */
+  async delete(
+    sessionId: string,
+    options: { cascade?: boolean; currentSessionId?: string } = {},
+  ): Promise<DeleteResult> {
+    if (options.currentSessionId === sessionId) {
+      throw new ButlerError('cannot-trash-current', 'refusing to delete the current session')
+    }
+    if (typeof this.options.persistence.prepareDelete === 'function') {
+      return this.deleteNative(sessionId, options)
+    }
+    const moved = await this.trash(sessionId, options)
+    const deleted: string[] = []
+    for (const id of moved.trashed) {
+      const entry = await this.trashStore.find(id)
+      if (entry === undefined) continue
+      await this.trashStore.purge(entry)
+      deleted.push(id)
+    }
+    return { deleted }
+  }
+
+  /** Release the owner's idle handles, then use backend-owned deletion reservations. */
+  private async deleteNative(
+    sessionId: string,
+    options: { cascade?: boolean; currentSessionId?: string },
+  ): Promise<DeleteResult> {
+    const persistence = this.options.persistence
+    const prepare = persistence.prepareDelete
+    if (prepare === undefined) throw new ButlerError('unsupported', 'native deletion is unavailable')
+    const cascade = options.cascade ?? this.cascadeSubagents
+    const first = [await this.readRootRecord(sessionId), ...(cascade ? await this.readDescendants(sessionId) : [])]
+    const blocked = first.filter(record => record.formatStatus === 'migration-required').map(record => record.header.id)
+    if (blocked.length > 0) throw migrationError(blocked)
+    const deleted = new Set<string>()
+    const gone = new Set<string>()
+    let entered = false
+    const operation = async (): Promise<void> => {
+      if (entered) throw new ButlerError('internal', 'native deletion callback was invoked more than once')
+      entered = true
+      const current = await persistence.stat(sessionId)
+      const records = current === undefined
+        ? first
+        : [{ header: current.header, persisted: true, live: false, formatStatus: current.formatStatus },
+          ...(cascade ? await this.readDescendants(sessionId) : [])]
+      const byId = new Map(records.map(record => [record.header.id, record]))
+      if (options.currentSessionId !== undefined && byId.has(options.currentSessionId)) {
+        throw new ButlerError('cannot-trash-current', 'refusing to delete the current session')
+      }
+      const held = new Map<string, SessionDeletionHandleLike>()
+      let failure: { error: unknown } | undefined
       try {
-        for (const target of located) {
-          const isRoot = target.id === sessionId
-          moved.push(await this.trashStore.moveIn(target, {
-            deletedAt,
-            ...(isRoot ? {} : { cascadeOf: sessionId }),
-            descendants: isRoot ? descendantIds : [],
-          }))
+        for (const id of [...byId.keys()].sort()) {
+          const snapshot = await persistence.stat(id)
+          if (snapshot === undefined) { gone.add(id); continue }
+          if (snapshot.formatStatus === 'migration-required') throw migrationError([id])
+          const handle = await prepare.call(persistence, id)
+          held.set(id, handle)
+          if (handle.header.id !== id) throw new ButlerError('unsupported', 'native deletion returned a different session identity')
+        }
+        // The traversal is parent-first, so reverse it to commit children before parents.
+        for (const id of [...byId.keys()].reverse()) {
+          const handle = held.get(id)
+          if (handle === undefined) continue
+          try {
+            await handle.commit()
+          } catch (error) {
+            if (handle.committed || (error !== null && typeof error === 'object'
+              && (error as { committed?: unknown }).committed === true)) {
+              deleted.add(id)
+              await this.clearNativeWorkspaceState(id)
+            }
+            throw error
+          }
+          deleted.add(id)
+          await this.clearNativeWorkspaceState(id)
         }
       } catch (error) {
-        for (const entry of [...moved].reverse()) {
-          try {
-            await this.trashStore.moveOut(entry)
-          } catch {
-            // Rollback is best-effort; the original failure stays authoritative.
-          }
-        }
-        throw error
+        failure = { error }
       }
+      const closed = await Promise.allSettled([...held.values()].reverse().map(handle => handle.close()))
+      const closeErrors = closed.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+      if (failure !== undefined) {
+        if (closeErrors.length > 0) throw new AggregateError([failure.error, ...closeErrors], 'native deletion and reservation cleanup failed')
+        throw failure.error
+      }
+      if (closeErrors.length > 0) throw new AggregateError(closeErrors, 'native deletion reservation cleanup failed')
+    }
+    try {
+      const owner = this.deletionCoordinator
+      if (owner !== undefined) {
+        await owner.withIdleSessionsReleased(first.map(record => record.header.id), operation)
+        if (!entered) throw new ButlerError('unsupported', 'the DSH owner did not enter the deletion transaction')
+      } else {
+        for (const record of first) await this.waitForRelease(record.header.id)
+        await operation()
+      }
+    } catch (error) {
+      if (deleted.size > 0) {
+        throw new ButlerError('delete-partial', 'some session deletions committed before the operation failed', {
+          details: { sessionId, deletedIds: [...deleted] }, cause: error,
+        })
+      }
+      throw nativeDeletionFailure(error, sessionId)
+    }
+    return { deleted: [...deleted, ...gone] }
+  }
 
-      for (const target of located) await this.clearWorkspaceState(target.id)
-      succeeded = true
-      return { trashed: located.map(target => target.id), trashRoot: this.options.trashRoot }
-    } finally {
-      if (!succeeded) {
-        for (const id of archived) {
-          try {
-            await this.workspace?.unarchiveSession(id)
-          } catch {
-            // Best-effort state restoration after a failed trash.
-          }
-        }
+  /** Workspace identity cleanup remains inside the backend's ID reservations. */
+  private async clearNativeWorkspaceState(sessionId: string): Promise<void> {
+    const workspace = this.workspace
+    if (workspace === undefined) return
+    await workspace.unarchiveSession(sessionId)
+    await workspace.unpinSession(sessionId)
+  }
+
+  /**
+   * Permanently delete several sessions independently; one failure does not stop
+   * the rest. Items report their deleted ids in `moved` (same batch envelope as
+   * trash/restore); ids already removed by a cascade are no-op successes.
+   */
+  async deleteMany(
+    sessionIds: readonly string[],
+    options: { cascade?: boolean; currentSessionId?: string } = {},
+  ): Promise<BatchResult> {
+    const ids = this.normalizeBatch(sessionIds)
+    const deleted = new Set<string>()
+    const items: BatchItemResult[] = []
+    for (const id of ids) {
+      if (deleted.has(id)) {
+        items.push({ id, ok: true, moved: [] })
+        continue
+      }
+      try {
+        const result = await this.delete(id, options)
+        for (const item of result.deleted) deleted.add(item)
+        items.push({ id, ok: true, moved: result.deleted })
+      } catch (error) {
+        const failure = asButlerError(error, 'internal', `cannot delete session "${id}"`)
+        const committed = Array.isArray(failure.details.deletedIds)
+          ? failure.details.deletedIds.filter((value): value is string => typeof value === 'string') : []
+        for (const committedId of committed) deleted.add(committedId)
+        items.push({ id, ok: false, moved: committed, error: { code: failure.code, message: failure.message } })
       }
     }
+    return { items, moved: [...deleted], failed: items.filter(item => !item.ok).map(item => item.id) }
   }
 
   /** Restore one trashed session to its original directory. */
@@ -629,7 +936,7 @@ export class SessionButlerService {
    * into `confirm`, and the caller must echo the exact session id).
    */
   async purge(sessionId: string, confirmId: string): Promise<PurgeResult> {
-    if (this.options.permanentDelete !== 'confirm') {
+    if (this.permanentDelete !== 'confirm') {
       throw new ButlerError(
         'permanent-delete-disabled',
         'permanent deletion is disabled; set permanentDelete: confirm in the plugin config to enable it',
@@ -677,40 +984,29 @@ export class SessionButlerService {
     return this.sessions?.get(sessionId) !== undefined || this.agents?.get(sessionId) !== undefined
   }
 
-  /**
-   * Stop running work and wait for it to settle (D-013). Without workspace
-   * services a running session is refused outright.
-   * @param archived - collects ids this call archived, for failure rollback.
-   */
-  private async settleRunning(sessionId: string, archived: string[]): Promise<void> {
-    if (!this.isLive(sessionId)) return
-    const workspace = this.workspace
-    if (workspace === undefined) {
-      throw new ButlerError(
-        'session-running',
-        `session "${sessionId}" is running and this composition provides no workspace service to stop it; stop it first`,
-        { details: { sessionId } },
-      )
+  /** Wait for the owning DSH component to release a loaded Session or Agent. */
+  private async waitForRelease(sessionId: string): Promise<void> {
+    const deadline = Date.now() + this.liveSettleTimeoutMs
+    while (this.isLive(sessionId)) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      // Do not archive, stop, or dispose someone else's live Agent. Those
+      // operations do not release its writer and can discard ongoing work.
+      await sleep(Math.min(100, remaining))
     }
-    try {
-      await workspace.archiveSession(sessionId, { stopActivity: true })
-      archived.push(sessionId)
-    } catch (error) {
-      throw new ButlerError('session-running', `cannot stop running session "${sessionId}"`, {
-        details: { sessionId },
-        cause: error,
-      })
-    }
-    const settleTimeoutMs = this.options.liveSettleTimeoutMs ?? 3_000
-    const attempts = Math.max(1, Math.ceil(settleTimeoutMs / 100))
-    for (let attempt = 0; attempt < attempts && this.isLive(sessionId); attempt += 1) {
-      await sleep(100)
-    }
-    if (this.isLive(sessionId)) {
-      throw new ButlerError('session-running', `session "${sessionId}" is still running after stop was requested`, {
+    const session = this.sessions?.get(sessionId)
+    const agent = this.agents?.get(sessionId) as LiveAgentLike | undefined
+    if (session === undefined && agent === undefined) return
+    if (agent?.status === 'running') {
+      throw new ButlerError('session-running', `session "${sessionId}" is still running; stop its activity before retrying`, {
         details: { sessionId },
       })
     }
+    throw new ButlerError(
+      'session-in-use',
+      `session "${sessionId}" remains loaded in this DSH process; release it before retrying`,
+      { details: { sessionId } },
+    )
   }
 
   /** Take and release the cross-process write lease once, as a writer probe. */
@@ -719,18 +1015,19 @@ export class SessionButlerService {
     try {
       handle = await this.options.persistence.open(sessionId, 'write')
     } catch (error) {
-      throw new ButlerError('session-locked', `session "${sessionId}" is held by another writer`, {
-        details: { sessionId },
-        cause: error,
-      })
+      if (error !== null && typeof error === 'object'
+        && (error as { name?: unknown }).name === 'SessionAlreadyOwnedError') {
+        throw new ButlerError('session-locked', `session "${sessionId}" is held by another writer`, {
+          details: { sessionId },
+          cause: error,
+        })
+      }
+      throw asButlerError(error, 'internal', `cannot inspect write ownership for "${sessionId}"`)
     }
     try {
       await handle.close()
     } catch (error) {
-      throw new ButlerError('session-locked', `cannot release the write probe for "${sessionId}"`, {
-        details: { sessionId },
-        cause: error,
-      })
+      throw asButlerError(error, 'internal', `cannot release the write probe for "${sessionId}"`)
     }
   }
 
@@ -749,6 +1046,29 @@ export class SessionButlerService {
       // Unpinning an unpinned id is a no-op failure at worst.
     }
   }
+}
+
+/** Preserve stable failures exposed by newer DSH owner and storage capabilities. */
+function nativeDeletionFailure(error: unknown, sessionId: string): ButlerError {
+  if (error instanceof ButlerError) return error
+  const value = error !== null && typeof error === 'object'
+    ? error as { code?: unknown; name?: unknown; dependentSessionId?: unknown } : undefined
+  if (value?.code === 'SESSION_RELEASE_BUSY') {
+    return new ButlerError('session-busy', 'the session has active work or pending input', { details: { sessionId }, cause: error })
+  }
+  if (value?.code === 'SESSION_RELEASE_UNSUPPORTED' || value?.code === 'SESSION_RELEASE_NOT_OWNED') {
+    return new ButlerError('session-in-use', 'this DSH owner cannot release the session', { details: { sessionId }, cause: error })
+  }
+  if (value?.name === 'SessionAlreadyOwnedError') {
+    return new ButlerError('session-locked', 'the session has another active writer', { details: { sessionId }, cause: error })
+  }
+  if (value?.name === 'SessionDeletionMigrationRequiredError') {
+    return migrationError([typeof value.dependentSessionId === 'string' ? value.dependentSessionId : sessionId])
+  }
+  if (value?.name === 'SessionPersistenceNotFoundError') {
+    return new ButlerError('session-not-found', 'the session no longer exists', { details: { sessionId }, cause: error })
+  }
+  return asButlerError(error, 'internal', 'native session deletion failed')
 }
 
 /** Build the migration-refusal error naming every blocked session. */
