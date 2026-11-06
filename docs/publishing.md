@@ -161,6 +161,21 @@ npm view dsh-session-butler@<version> name version engines peerDependencies dsh 
 git tag v<version> && git push origin v<version>
 ```
 
+## 阶段 D2：从 GitHub Actions 发布（推荐）
+
+本机发布需要账号 2FA；CI 发布不需要人工输入动态码。推送与 `package.json` 版本一致的 tag 即触发 `.github/workflows/release.yml`：
+
+```bash
+git tag v0.2.2 && git push origin v0.2.2
+```
+
+两种凭据方式，二选一：
+
+1. **Trusted publishing（无需密钥）**：在 npmjs.com → 包 → Settings → Trusted publishing 添加本仓库与工作流文件名（`release.yml`）。之后工作流用 OIDC 自动认证，不再需要 `NPM_TOKEN`。
+2. **NPM_TOKEN secret**：在 npmjs.com 创建 Automation（或 Granular，勾选 read/write 且允许 bypass 2FA）token，写入仓库 Secrets `NPM_TOKEN`。工作流已读取该 secret。
+
+工作流会先校验 tag 与版本一致、跑 `pnpm run verify`，再用 `npm publish --provenance` 发布（`id-token: write` 已声明）。首次使用前请确认包已存在且当前账号是 maintainer。
+
 ## 阶段 E：从 registry 全新安装验证
 
 ```bash

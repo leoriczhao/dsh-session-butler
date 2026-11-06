@@ -1,0 +1,56 @@
+name: Release
+
+# Publishing needs the npm account's 2FA when run locally. A tag push publishes
+# from CI instead: either with an NPM_TOKEN secret, or — after configuring the
+# package's trusted publisher on npmjs.com — with no secret at all, using OIDC.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package version ${version}" >&2
+            exit 1
+          fi
+
+      - name: Verify
+        run: pnpm run verify
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          # Omit this secret after configuring the package's trusted publisher
+          # (npmjs.com → package → Settings → Trusted publishing) for this repo
+          # and this workflow file; npm then authenticates with the OIDC token.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
