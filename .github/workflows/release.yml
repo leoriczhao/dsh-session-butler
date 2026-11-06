@@ -47,10 +47,12 @@ jobs:
       - name: Verify
         run: pnpm run verify
 
+      - name: npm version
+        run: npm --version
+
       - name: Publish to npm
+        # Authenticates with the OIDC token from the package's trusted publisher
+        # (npmjs.com → dsh-session-butler → Settings → Trusted publishing:
+        # repository leoriczhao/dsh-session-butler, workflow release.yml,
+        # permission publish). No npm token secret is involved.
         run: npm publish --access public --provenance
-        env:
-          # Omit this secret after configuring the package's trusted publisher
-          # (npmjs.com → package → Settings → Trusted publishing) for this repo
-          # and this workflow file; npm then authenticates with the OIDC token.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
