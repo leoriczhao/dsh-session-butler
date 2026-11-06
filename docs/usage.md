@@ -13,7 +13,7 @@
 - **命令**：`/session-butler list|trash|restore|purge`（CLI 保留内部回收站作为高级恢复手段）。
 - **没有用户可见的回收站页面**：删除确认后立即执行，不再要求去第二个页面二次删除（D-030）。
 
-> **版本状态（0.2.2，已构建待发布）**：0.1.x 完成 Host 删除核心、命令、agent 工具与真实浏览器验证；0.2.0（D-029）移除会话库面板/插件页配置，改为设置页入口；0.2.1（D-030）按用户三次纠正移除回收站页面，删除改为一步永久删除；0.2.2 由配套宿主释放空闲句柄并用后端原生删除事务完成删除。真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 已安装验证均在 0.1.x 完成；仍被加载的会话会被拒绝并提示处理方式；其余会话即时删除。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
+> **版本状态（0.2.2，已发布到 npm）**：0.1.x 完成 Host 删除核心、命令、agent 工具与真实浏览器验证；0.2.0（D-029）移除会话库面板/插件页配置，改为设置页入口；0.2.1（D-030）按用户三次纠正移除回收站页面，删除改为一步永久删除；0.2.2 由配套宿主释放空闲句柄并用后端原生删除事务完成删除。真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 已安装验证均在 0.1.x 完成；仍被加载的会话会被拒绝并提示处理方式；其余会话即时删除。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
 
 ## 安装
 

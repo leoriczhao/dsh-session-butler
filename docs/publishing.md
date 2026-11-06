@@ -174,7 +174,7 @@ git tag v0.2.2 && git push origin v0.2.2
 1. **Trusted publishing（无需密钥）**：在 npmjs.com → 包 → Settings → Trusted publishing 添加本仓库与工作流文件名（`release.yml`）。之后工作流用 OIDC 自动认证，不再需要 `NPM_TOKEN`。
 2. **NPM_TOKEN secret**：在 npmjs.com 创建 Automation（或 Granular，勾选 read/write 且允许 bypass 2FA）token，写入仓库 Secrets `NPM_TOKEN`。工作流已读取该 secret。
 
-工作流会先校验 tag 与版本一致、跑 `pnpm run verify`，再用 `npm publish --provenance` 发布（`id-token: write` 已声明）。首次使用前请确认包已存在且当前账号是 maintainer。
+工作流会先校验 tag 与版本一致、跑 `pnpm run verify`，再用 `npm publish --provenance` 发布（`id-token: write` 已声明）。首次使用前请确认包已存在且当前账号是 maintainer。`0.2.2` 是首个按此流程发布的版本：tag `v0.2.2` 的发布 run 已通过 OIDC 认证，仅因该版本已由本地发布而停在重复版本检查。
 
 ## 阶段 E：从 registry 全新安装验证
 
