@@ -19,6 +19,7 @@ async function makeHome() {
     home,
     sessionsRoot,
     trashRoot,
+    pendingRoot: path.join(home, 'session-butler', 'pending'),
     cleanup: () => rm(home, { recursive: true, force: true }),
   }
 }
@@ -256,7 +257,7 @@ test('a live session is refused or waits for its owner to release it', async () 
   }
 })
 
-test('an idle resident session is reported as loaded without changing its state', async () => {
+test('a loaded idle session is refused without touching its files', async () => {
   const home = await makeHome()
   try {
     await addSession(home.sessionsRoot, '--proj--', 'session-idle')
@@ -275,22 +276,23 @@ test('an idle resident session is reported as loaded without changing its state'
       headers: { 'session-idle': header('session-idle') },
       live: new Set(['session-idle']),
       liveAgents: new Map([['session-idle', { status: 'idle' }]]),
-      liveSettleTimeoutMs: 1,
       workspace,
     })
     await assert.rejects(
       () => service.delete('session-idle'),
       error => error instanceof ButlerError && error.code === 'session-in-use',
     )
+    // Nothing was stopped, archived, unpinned, opened or moved.
     assert.deepEqual(calls, [])
     assert.deepEqual(persistence.opened, [])
     assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-idle'])
+    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--', 'session-idle')), ['session.v4.jsonl.zstd'])
   } finally {
     await home.cleanup()
   }
 })
 
-test('a running resident agent is refused without stopping unrelated work', async () => {
+test('a running session is refused as running without cancelling its turn', async () => {
   const home = await makeHome()
   try {
     await addSession(home.sessionsRoot, '--proj--', 'session-active')
@@ -303,33 +305,33 @@ test('a running resident agent is refused without stopping unrelated work', asyn
       async pinSession(id) { calls.push(['pin', id]) },
       async unpinSession(id) { calls.push(['unpin', id]) },
     }
-    const { service, persistence } = makeService({
+    const { service } = makeService({
       sessionsRoot: home.sessionsRoot,
       trashRoot: home.trashRoot,
       headers: { 'session-active': header('session-active') },
       live: new Set(['session-active']),
       liveAgents: new Map([['session-active', { status: 'running' }]]),
-      liveSettleTimeoutMs: 1,
       workspace,
     })
-    await assert.rejects(() => service.delete('session-active'),
-      error => error instanceof ButlerError && error.code === 'session-running')
+    await assert.rejects(
+      () => service.delete('session-active'),
+      error => error instanceof ButlerError && error.code === 'session-running',
+    )
     assert.deepEqual(calls, [])
-    assert.deepEqual(persistence.opened, [])
     assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-active'])
   } finally {
     await home.cleanup()
   }
 })
 
-test('a refused deletion leaves an already archived session untouched', async () => {
+test('a refused delete keeps the archived and pinned flags and the listed row', async () => {
   const home = await makeHome()
   try {
     await addSession(home.sessionsRoot, '--proj--', 'session-archived')
     const calls = []
     const workspace = {
       archivedSessionIds: ['session-archived'],
-      pinnedSessionIds: [],
+      pinnedSessionIds: ['session-archived'],
       async archiveSession(id) { calls.push(['archive', id]) },
       async unarchiveSession(id) { calls.push(['unarchive', id]) },
       async pinSession(id) { calls.push(['pin', id]) },
@@ -340,7 +342,6 @@ test('a refused deletion leaves an already archived session untouched', async ()
       trashRoot: home.trashRoot,
       headers: { 'session-archived': header('session-archived') },
       live: new Set(['session-archived']),
-      liveSettleTimeoutMs: 1,
       workspace,
     })
     await assert.rejects(
@@ -348,41 +349,10 @@ test('a refused deletion leaves an already archived session untouched', async ()
       error => error instanceof ButlerError && error.code === 'session-in-use',
     )
     assert.deepEqual(calls, [])
-    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-archived'])
-  } finally {
-    await home.cleanup()
-  }
-})
-
-test('a refused deletion leaves a pinned session untouched', async () => {
-  const home = await makeHome()
-  try {
-    await addSession(home.sessionsRoot, '--proj--', 'session-pinned')
-    let archived = false
-    let pinned = true
-    let archiveCalls = 0
-    const workspace = {
-      get archivedSessionIds() { return archived ? ['session-pinned'] : [] },
-      get pinnedSessionIds() { return pinned ? ['session-pinned'] : [] },
-      async archiveSession() { archiveCalls += 1; archived = true; pinned = false },
-      async unarchiveSession() { archived = false },
-      async pinSession() { pinned = true },
-      async unpinSession() { pinned = false },
-    }
-    const { service } = makeService({
-      sessionsRoot: home.sessionsRoot,
-      trashRoot: home.trashRoot,
-      headers: { 'session-pinned': header('session-pinned') },
-      live: new Set(['session-pinned']),
-      liveSettleTimeoutMs: 1,
-      workspace,
-    })
-    await assert.rejects(() => service.delete('session-pinned'),
-      error => error instanceof ButlerError && error.code === 'session-in-use')
-    assert.equal(archived, false)
-    assert.equal(pinned, true)
-    assert.equal(archiveCalls, 0)
-    assert.deepEqual(await readdir(path.join(home.sessionsRoot, '--proj--')), ['session-pinned'])
+    const listed = await service.listSessions({ limit: 10, includeArchived: true })
+    assert.deepEqual(listed.sessions.map(entry => entry.id), ['session-archived'])
+    assert.equal(listed.sessions[0].archived, true)
+    assert.equal(listed.sessions[0].pinned, true)
   } finally {
     await home.cleanup()
   }

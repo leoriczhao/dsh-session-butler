@@ -19,10 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { zstdCompressSync } from 'node:zlib'
 
 export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
-const HOST_ROOT = process.env.DSH_E2E_HOST_ROOT
-export const DSH_BIN = HOST_ROOT
-  ? join(HOST_ROOT, 'apps', 'cli', 'src', 'bin.ts')
-  : join(REPO_ROOT, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+export const DSH_BIN = join(REPO_ROOT, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 export const PACKAGE_JSON = JSON.parse(await readFile(join(REPO_ROOT, 'package.json'), 'utf8'))
 
 const DEFAULT_WORKSPACES = ['alpha', 'beta']
@@ -218,9 +215,8 @@ export async function createDshHome({ workspaces = DEFAULT_WORKSPACES, seedSessi
  * @returns the printed URL plus teardown and captured output.
  */
 export async function startDshWeb(home, { timeout = 45_000 } = {}) {
-  const args = [...(HOST_ROOT ? ['--import', 'tsx/esm'] : []), DSH_BIN, 'web', '--no-open', '--port', '0']
-  const child = spawn(process.execPath, args, {
-    cwd: HOST_ROOT ?? REPO_ROOT,
+  const child = spawn(process.execPath, [DSH_BIN, 'web', '--no-open', '--port', '0'], {
+    cwd: REPO_ROOT,
     env: { ...process.env, DSH_HOME: home },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

@@ -100,20 +100,6 @@ export interface SessionPersistenceSnapshotLike {
   readonly sizeBytes?: number
 }
 
-/** One native backend deletion reservation; its ID guard lasts until close. */
-export interface SessionDeletionHandleLike {
-  readonly header: SessionHeaderLike
-  readonly operationId: string
-  readonly committed: boolean
-  commit(): Promise<unknown>
-  close(): Promise<void>
-}
-
-/** Host-owned admission fence and release of its own idle Agent handles. */
-export interface SessionDeletionCoordinatorPort {
-  withIdleSessionsReleased<T>(sessionIds: readonly string[], operation: () => Promise<T>): Promise<T>
-}
-
 /** The `sessionPersistence` methods Threadloom consumes. */
 export interface SessionPersistencePort {
   open(sessionId: string, access: 'write', options?: { signal?: AbortSignal }): Promise<{ close(): Promise<void> }>
@@ -123,8 +109,6 @@ export interface SessionPersistencePort {
   ): Promise<SessionPersistenceSnapshotLike | undefined>
   /** Every stored session visible to this process, in no promised order. */
   list(options?: { signal?: AbortSignal }): Promise<readonly SessionPersistenceSnapshotLike[]>
-  /** Optional native transaction; absent on older DSH backends. */
-  prepareDelete?(sessionId: string, options?: { signal?: AbortSignal }): Promise<SessionDeletionHandleLike>
 }
 
 /** One live Session object (only the fields Threadloom reads). */

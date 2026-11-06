@@ -2,7 +2,7 @@
 
 Threadloom 的验证分三层：第一层是每次提交的默认门禁（`pnpm run verify`），第二、三层在 CI 的独立 `e2e` job 中运行；两层 E2E 都使用真实 `dsh web` 进程，不伪造 Cordis Context。
 
-## 1. 单元与契约测试（80 个）
+## 1. 单元与契约测试（71 个）
 
 ```bash
 pnpm test          # node:test，tests/*.test.mjs
@@ -40,12 +40,12 @@ pnpm run verify    # typecheck + clean + build + test + npm pack 契约校验
 - 打开账号菜单 → Settings，断言左栏包含 **Archived chats** 与 **Threadloom**，且没有 Trash / 回收站或会话库入口；
 - 打开两个设置分区，检查 Archived chats 页面可渲染，Threadloom 设置页出现两个数字配置输入；
 - 两个 workspace 的会话行都出现在侧栏；
-- 模拟桥返回 `session-running`、`session-busy`、`session-in-use`、`session-locked`、`delete-partial` 和网络中断，验证关闭行菜单后仍会弹出对应提示；再通过临时存储冲突触发真实 Host 错误；
-- 用宿主的重命名操作加载一个已完成的会话：旧宿主验证拒绝与重启后的恢复；具备原生能力的宿主直接删除，同时断言另一个正在查看该会话的客户端无需刷新即移除该行；两条路径都断言目录消失、`trashCount === 0`；
+- 模拟桥返回 `session-running`、`session-in-use`、`session-locked` 和网络中断，验证关闭行菜单后仍会弹出对应提示；再通过临时存储冲突触发真实 Host 错误；
+- 用宿主的重命名操作加载一个已完成的会话，再从行菜单删除：断言被拒绝、提示先停止或安全重启、行与会话目录都保留；随后重启隔离宿主，再次删除成功且 `trashCount === 0`；
 - 在 alpha 会话行检查“Delete session”菜单项和图标；
 - 在 beta 会话行点 "`...`" → `Archive session`，进入 Settings → Archived chats，先验证批量失败不会报成功，再点 `Delete permanently`，确认后同样断言 bridge 列表、会话目录与回收站。
 
-> L2 使用模拟 bridge 响应覆盖提示，并通过真实 Host 覆盖存储冲突和空闲但仍被加载的会话。浏览器测试不启动真实模型或运行中的回合；Host 等待释放、拒绝时不停止活动且不改变归档/置顶状态，由单元测试覆盖。
+> L2 使用模拟 bridge 响应覆盖提示，并通过真实 Host 覆盖存储冲突和仍被加载的会话。浏览器测试不启动真实模型或运行中的回合；“拒绝时不停止活动、不临时归档、不改动文件”和错误分类由单元测试覆盖。
 
 ## 本地运行
 
@@ -61,16 +61,6 @@ DSH_E2E_CHROME=/path/to/chrome pnpm run test:e2e
 ```
 
 L1 需要 Node（`node:zlib` 的 zstd 支持，Node 24+）、`npm` 与 `tar`；L2 还需要 Playwright Chromium。E2E 会先 `npm pack`，所以必须先 `pnpm run build`（`pnpm run verify` 已包含）。
-
-## 验证配套宿主改动
-
-设置 `DSH_E2E_HOST_ROOT` 为已经构建的 DSH checkout，仍运行相同的 L1 与一条 L2：
-
-```bash
-DSH_E2E_HOST_ROOT=/path/to/deepseek-harness pnpm run test:e2e
-```
-
-此模式使用该 checkout 的 CLI 和浏览器构建产物，并要求 status 的 `backends.nativeDeletion === true`，确保正在验证配套宿主的原生删除路径。测试仍只写临时 `DSH_HOME`。
 
 ## CI
 
