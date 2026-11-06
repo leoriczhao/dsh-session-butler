@@ -2,5 +2,13 @@ packages:
   - .
 
 # esbuild needs its platform binary linked by its install script.
+# pnpm 11 fails an install when a dependency's build script is neither allowed
+# nor explicitly ignored, so every reported package is listed here.
 allowBuilds:
   esbuild: true
+  koffi: true
+  node-pty: true
+  '@deepseek-ai/dsh-subprocess-local': true
+  # No install step is required for these; listing them keeps the install strict.
+  '@google/genai': false
+  protobufjs: false
