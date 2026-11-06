@@ -1,130 +1,96 @@
-# Threadloom · dsh-session-butler
+# Threadloom
 
-[![npm](https://img.shields.io/npm/v/dsh-session-butler.svg)](https://www.npmjs.com/package/dsh-session-butler)
+[![npm](https://img.shields.io/npm/v/dsh-session-butler)](https://www.npmjs.com/package/dsh-session-butler)
 [![CI](https://github.com/leoriczhao/dsh-session-butler/actions/workflows/ci.yml/badge.svg)](https://github.com/leoriczhao/dsh-session-butler/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> DeepSeek Harness 的会话管理插件 —— 按 Codex 桌面端的形态管理会话：归档在设置里，删除一步完成。
+DeepSeek Harness 的会话管理插件：给已归档的会话一个列表，给会话行一个真正的删除。
 
-**npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**0.2.2 已发布到 npm（latest）**（0.1.1 修复 native function calling 的 `parameters` 根 schema，0.1.2 补齐 `session_butler_new` / `session_butler_fork` 工具并修复新会话的 Workspace 归属；0.2.0 把会话管理入口收进设置页并移除会话库面板；0.2.1/D-030 移除回收站页面，删除改为一步永久删除；0.2.2 修复删除入口的图标/文案，并在拒绝删除仍被加载的会话时给出可执行提示）
-**兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
+DSH 已经能改名、置顶、归档、分叉；归档之后没有地方查看，也没有删除入口。Threadloom 补上这两块：设置里多一个「已归档的聊天」分区，会话行多一项「删除会话」。
 
----
+![已归档的聊天](https://raw.githubusercontent.com/leoriczhao/dsh-session-butler/main/docs/evidence/live-settings-archived-0.2.1.png)
 
-## 这是什么
+## 你会得到
 
-DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真正缺的是归档/删除管理面，以及 agent tool 面的「会话 → 新会话」**。Threadloom 按 Codex 桌面端（合并后的 ChatGPT/Codex）的形态补齐：
+- **已归档的聊天**（设置 → 已归档的聊天）：按项目分组、搜索、取消归档、永久删除、全部删除。
+- **删除会话**（会话行 `...` 菜单）：确认一次就删掉，没有回收站第二步。
+- **级联删除子代理**：删主会话时可选带走它的子代理会话；普通 fork 不受影响。
+- **给模型用的工具**：列出、查看、新建、分叉会话（`session_butler_list` / `detail` / `new` / `fork`），破坏性操作不开放给模型。
 
-| 能力 | 状态 |
+## 安装
+
+在 DSH 的 **插件** 页搜索 `dsh-session-butler` 安装，或者：
+
+```sh
+dsh plugin --profile web add dsh-session-butler
+```
+
+装完重启一次 `dsh web`。Host 半的新代码只有重启后才生效，Client 半刷新页面即可。
+
+从本仓库源码安装（需要先 `pnpm install && pnpm run build`）：
+
+```sh
+dsh plugin --profile web add /path/to/dsh-session-butler
+```
+
+## 使用
+
+| 入口 | 做什么 |
 |---|---|
-| 已归档的聊天（设置页） | ✅ 0.2.1（设置 → 已归档的聊天：搜索、按项目分组、取消归档、永久删除、全部删除） |
-| **删除（一步永久删除）** | ✅ 0.2.1（已归档页「永久删除」/「全部删除」+ 会话行「删除会话」；确认后直接删除，无回收站第二步；Host 底层仍走安全移动管线） |
-| 子代理级联删除（fork 永不级联） | ✅ M1 |
-| `/session-butler` 命令 | ✅ M1（list / trash / restore / purge） |
-| Agent 工具：读取 | ✅ M3（`session_butler_list` / `session_butler_detail`） |
-| **Agent 工具：会话 → 新会话** | ✅ 0.1.2（`session_butler_new` 继承调用方 cwd/Workspace/preset 新建空会话，自动归属调用方 workspace；`session_butler_fork` 从调用方会话按已完成轮分叉；只操作调用方会话，不暴露任意 session id；删除等破坏性写操作不进工具面） |
-| 批量操作 | ✅ 已归档页「全部删除」批量永久删除（同源桥 `delete-many`，每批 ≤50，逐项结果） |
-| 插件页集成 | ✅ 健康徽标 `plugins.detail.badge` + 诊断区块 `plugins.detail.section`（配置已迁至设置页） |
-| Codex 式入口 | ✅ 0.2.1/D-030（无侧栏按钮、无会话库面板；设置页两个分区：「已归档的聊天」「Threadloom」；会话行 "..." 菜单仅保留「删除会话」；`inlineMenuEnabled` 可关） |
-| i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
-| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.2.2` 已通过 GitHub Actions 的 trusted publishing 发布（带 provenance） |
+| 设置 → **已归档的聊天** | 看已归档会话，按项目分组、搜索；取消归档；永久删除；全部删除 |
+| 设置 → **Threadloom** | 插件配置，改完立即生效 |
+| 会话行 `...` → **删除会话** | 确认后永久删除该会话 |
+| 命令 `/session-butler` | `list` / `trash` / `restore` / `purge`，给 CLI 和脚本用 |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.0`–`0.2.2`（设置页入口、一步删除、拒绝删除已加载会话）均已构建、验证并提交；`0.2.2` 已发布。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 71 tests + npm pack 契约）与 `pnpm run test:e2e`（真实 dsh web 组合 + Playwright）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+## 删除是怎么做的
 
-## 还差什么（D3 路线图）
+确认之后直接删，不留回收站页面。删除前会检查这个会话还能不能安全删：
 
-D3 方向在 2026-10-29 被用户二次纠正：**不做 Library/管理台，管理入口全部收进设置页**（D-029）；2026-10-30 三次纠正后删除改为一步完成、取消回收站页面（D-030）。当前完成 0.2.1 的设置页两入口；以下是剩余工作：
+- **没被 DSH 加载的会话**：立即删除，目录和日志一起清掉。
+- **仍被 DSH 加载的会话**：**拒绝删除**，并说明原因——还在跑就先停掉；只是被加载就安全重启 DSH 后再试，重启后不要重新打开它。插件不会为了删除去停任务、改归档状态或动文件。
+- **其他进程正在写**：拒绝，提示先关掉占用它的进程。
 
-| 阶段 | 缺口 |
-|---|---|
-| 发布 | 后续版本走 `v*` tag + trusted publishing 自动发布（见 `docs/publishing.md` 阶段 D2） |
-| D3.1 设置页完善 | 已归档列表分页/workspace 筛选、临时删除的 undo toast（替代原生 confirm）、设置分区图标（DSH 只对内置 id 映射图标）、live 会话/句柄删除的兼容性 |
-| D3.2 组织与生命周期 | CLI 回收站保留期审计与过期提示、行菜单删除的 toast/撤销体验（当前原生 confirm） |
-| D3.3 增强 | 设置页内的搜索/筛选状态记忆、CLI 恢复入口文档化、i18n 补全（设置页两分区已中英） |
-| 明确非目标 | 跨 workspace 移动（D-012）、自动永久删除、运行中会话强删（D-013）、会话库/独立管理面板（D-029） |
+级联删除只沿 subagent 走，普通 fork 及其子会话不会被带走；确认框里会写明这次会删几个子代理会话。
 
-## 快速开始（开发）
+## 配置
 
-```bash
+设置 → Threadloom，四项：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `trashRetentionDays` | `30` | 回收站条目的保留天数（CLI `trash`/`restore` 用），`0` 表示不按时间过期 |
+| `liveSettleTimeoutMs` | `3000` | 等待宿主释放会话的毫秒上限，超时即拒绝 |
+| `cascadeSubagents` | `true` | 删除时是否连带子代理会话 |
+| `inlineMenuEnabled` | `true` | 是否在会话行菜单里显示「删除会话」 |
+
+配置文件里还有 `permanentDelete`，只用于 CLI 的 `purge`（需要输入完整 session id），GUI 删除不受它限制。
+
+## 兼容性
+
+需要 DSH `>=0.2.1-rc.2 <0.3.0-0`（由顶层 `engines.dsh` 判定）。缺少 `workspaceRegistry`、`sessionTitle` 等服务的 headless / ACP 组合下，插件会降级而不是崩溃：命令和工具仍可用，设置页分区不出现。
+
+## 开发
+
+```sh
 pnpm install
-pnpm run verify        # typecheck + build + tests + npm pack 契约校验
-pnpm run test:e2e      # 真实 dsh web 组合（L1）+ Playwright 浏览器（L2）
+pnpm run verify       # typecheck + build + 71 个单元测试 + npm pack 契约
+pnpm run test:e2e     # 真实 dsh web 组合 + Playwright 浏览器
 ```
 
-产物：
+产物两半：`lib/index.js`（Host，`apply(ctx, config)`）和 `lib/client.js`（Web Client，由宿主模块加载器注入）。
 
-- `lib/index.js` + `lib/types/**`：Host 半（ESM，`apply(ctx, config)`）
-- `lib/client.js`：Web Client 半（`window.__ModuleLoader__.load({id, factory})` 经典脚本）
+发布走 tag，由 GitHub Actions 用 npm trusted publishing 发布并附 provenance：
 
-本地安装到临时 profile 验证（不要装进日常 profile；管理页需要 Web 模板）：
-
-```bash
-dsh --profile tl-web --from-default-profile web --dump-config   # 先建临时 web profile
-dsh plugin --profile tl-web add /home/leoric/code/dsh-session-butler
-dsh --profile tl-web --port 3099 --no-open                      # 打开打印的 token URL；设置 → 已归档的聊天 / Threadloom
-```
-
-使用入口（与 Codex 桌面端一致）：
-
-- **设置 → 已归档的聊天**：搜索、按项目分组、取消归档、永久删除、全部删除；
-- **设置 → Threadloom**：插件配置（4 个 volatile 字段，保存即生效）；
-- **会话行 "..." 菜单 → 删除会话**：侧栏会话的快捷永久删除（`inlineMenuEnabled` 可关）。
-
-> 删除确认后立即执行，没有第二步回收站页面。仍被 DSH 加载的会话**不会被删除**：插件无法释放宿主持有的写句柄，会提示先停止工作或安全重启后再试；未加载的会话即时删除。详见 `docs/usage.md` 的安全边界。
-
-## 目录
-
-```
-├── package.json                 # npm 契约：dsh.bundle.patch / dsh.client / engines.dsh / exports / files
-├── cordis.patch.yml             # 安装时插入的 loader 行（id=session-butler）
-├── icon.svg · locale/{en,zh}.json
-├── src/
-│   ├── index.ts                 # Host 入口（name/inject/Config/apply）
-│   ├── config.ts                # Schemastery 配置
-│   ├── shared/                  # 稳定标识 + 稳定错误码
-│   ├── host/                    # Host 半：ports/locate/lineage/trash-store/read-model/service/tools/bridge/command
-│   └── client/                  # Client 半：index/settings/menu/plugin-page/bridge/locale/contract
-├── scripts/                     # build-client / validate-package / clean
-├── e2e/                         # L1 真实组合 + L2 Playwright（临时 DSH_HOME）
-├── tests/                       # node:test 产物与 manifest 冒烟
-├── docs/                        # 见下
-└── research/                    # 产品调研（Codex 会话管理）
+```sh
+git tag v0.2.3 && git push origin v0.2.3
 ```
 
 ## 文档
 
-| 文档 | 内容 |
-|---|---|
-| [`docs/architecture.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/architecture.md) | **目标架构**：能力边界、模块划分、删除管线、HTTP 桥、UI 挂载、里程碑、风险 |
-| [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) | 决策记录（D-001…D-033）+ 已收敛问题 + 发布门禁 |
-| [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md) | 发布 runbook（build → pack → link 验证 → publish → registry 复验） |
-| [`docs/testing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/testing.md) | **验证分层**：71 个单元/契约测试、L1 真实 `dsh web` 组合、L2 Playwright 浏览器、CI e2e job、临时 DSH_HOME 隔离 |
-| [`docs/usage.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/usage.md) | 用户文档（同时是插件详情页 `meta.detail`） |
-| [`research/dsh-session-management-v2.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/dsh-session-management-v2.md) | **调研 v2（以此为准）**：7 个表面 × 15 个能力的矩阵、已发布 rc 通道 vs HEAD 版本差异、第三方插件可用性、修正记录 |
-| [`research/v2-verification.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/v2-verification.md) | v2 的**独立对抗式复核**：15 条 claim（13 CONFIRMED / 1 WRONG / 1 NEEDS-NUANCE）+ 逐条证据 + 复核限制 |
-| [`docs/dsh-host-apis.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/dsh-host-apis.md) | ⛔ 第一版调研（已被 v2 取代，仅存档源码索引） |
-| [`docs/dsh-web-ui.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/dsh-web-ui.md) | ⛔ 第一版调研（已被 v2 取代，仅存档 slot/源码索引） |
-| [`docs/dsh-packaging-contract.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/dsh-packaging-contract.md) | 调研：npm 打包/安装/校验契约与 25 条坑位 |
-| [`research/codex-session-management.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/codex-session-management.md) | 产品对标：Codex CLI/TUI/app-server 的 thread 管理 |
-| [`research/2026-10-28-codex-desktop-ui-audit.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-28-codex-desktop-ui-audit.md) | **实机审计**：ChatGPT 桌面端 Codex 部分的侧栏、行内动作、右键菜单、命令面板、快捷键；补遗指出漏看的 Settings → 已归档的聊天 |
-| [`research/tool-face-parity.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/tool-face-parity.md) | **Codex 模型工具面补遗**：`codex_app` 线程工具（create_thread/fork_thread/…）证据与 Threadloom 4 工具对标 |
-| [`research/2026-10-29-research-corrections.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-29-research-corrections.md) | **调研修正记录**：三次被用户纠正的结论、根因、修正与后续调研协议 |
-| [`research/2026-10-chatgpt-desktop-conversation-management.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-chatgpt-desktop-conversation-management.md) | 产品对标：ChatGPT 桌面端 Chat/Work 的会话管理用例（Recents/Projects/Temporary/Archive/Delete） |
-| [`docs/d3-console-design.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/d3-console-design.md) | **D3 设计草案**：完整管理台的 IA、双用户能力矩阵、删除/回收站定位、与 DSH 插件管理 feature 的集成 |
-| [`research/2026-10-28-dsh-plugin-management-survey.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/research/2026-10-28-dsh-plugin-management-survey.md) | DSH 插件管理能力调研（Plugins 页/内置插件/CLI）+ Threadloom 接入建议（`plugins.*` 扩展点、volatile 表单、健康快照） |
-
-## 决策状态
-
-已定：包名/发布渠道/MIT（D-002）、删除底层采用回收站安全管线（D-003；D-030 后仅内部/CLI，GUI 一步删除）、级联只沿 subagent（D-004）、已加载会话等待宿主释放（D-005，后续由 D-032 修正）、归档不搬文件（D-006）、Web 桥用 webServer 前缀路由（D-008）、UI 入口内联会话行 "..." 菜单、不设侧栏按钮（D-023，取代 D-009 的 sidebar 部分）、tsc+esbuild 构建（D-010）、engines.dsh 独占兼容（D-011）、跨 workspace 移动不做（D-012）、删除前等待释放（D-013，后续由 D-032 修正）、fork 不重做（D-014）、tool 面缺口（D-015）、桥同源 POST 信封（D-016）、可选注入 + 延迟绑定（D-017）、结构化注册只读工具（D-018）、详情以 stat + 事件折叠为准（D-019）、批量操作逐项独立（D-020）。
-
-已定（D3）：**D-029（2026-10-29 二次纠正，取代 D-021/D-022/D-023/D-024 的入口与 Library 部分）** 无会话库、无侧栏按钮；管理入口全部收进 DSH 设置页。**D-030（2026-10-30 三次纠正，取代 D-029 的回收站页与行菜单动作）** 设置页只剩「已归档的聊天 / Threadloom」两项；删除一步完成（Delete permanently / Delete all / 行菜单 Delete session），不再有用户可见回收站；底层仍走安全移动管线，CLI 保留 trash/restore/purge。插件页只保留健康/诊断。工具面不变（D-015）。
-
-Q1–Q7 已全部收敛（底层回收站保留期 30 天不自动清理；CLI purge 默认 disabled；归档不级联；首版无内容检索；不做 CLI 子命令；迁移中会话拒绝删除；`engines.dsh` 下限 rc.2）。D-030 后 GUI 删除不再受 `permanentDelete` 门禁。D-031 接受用户批准的测试分层：L1 真实 `dsh web` 组合 + 一条 L2 Playwright 浏览器主路径，CI 独立 `e2e` job。
-
-## 命名
-
-- 包名 `dsh-session-butler`（用户选定，避免与 npm 上已被占用的 `threadloom` 冲突）
-- 产品/展示名 **Threadloom**（thread + loom：会话是线，管理器是织机）
+- [使用说明](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/usage.md)：每个入口的细节和安全边界
+- [架构](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/architecture.md)：Host/Client 两半、删除管线、HTTP 桥
+- [决策记录](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md)：为什么是现在这个形态
+- [测试](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/testing.md)：单元测试与两层真实环境验证
 
 ## 许可证
 
