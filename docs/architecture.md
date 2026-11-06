@@ -1,257 +1,65 @@
-# Threadloom 架构（基础版）
+# Threadloom 架构
 
-> 状态：基础工作（M0）。本文件是**已核实的 DSH 事实** + **目标架构**，不是已完成功能的描述。
-> 事实来源（均已逐行核对 DSH 源码与 live Host Service 注册表，版本 `0.2.1-rc.3`）：
-> [`dsh-host-apis.md`](./dsh-host-apis.md)、[`dsh-web-ui.md`](./dsh-web-ui.md)、[`dsh-packaging-contract.md`](./dsh-packaging-contract.md)。
-> 产品决策见 [`decisions.md`](./decisions.md)，发布流程见 [`publishing.md`](./publishing.md)。
+插件是单个 npm 包，两半代码：
 
-## 0. TL;DR
+| 半 | 位置 | 运行环境 | 入口 |
+|---|---|---|---|
+| Host | `src/host`、`src/index.ts` | `dsh` 进程（Node ESM） | `apply(ctx, config)` |
+| Client | `src/client` | Web 前端 | `window.__ModuleLoader__.load({ id, factory })` |
 
-1. **不要重做 DSH 已有的能力。** 已发布 rc 通道（rc.2/rc.3/rc.4，抽查一致）与 HEAD 都提供 rename、pin/unpin、archive/unarchive、fork、export（Host Service + Web Remote + GUI 都有）。fork 的 UI 入口有 3 个：会话页已完成轮末尾「在新对话中分支」（传 `atSeq`，可选分叉轮）、侧栏行菜单「分叉会话」、全局快捷键。Threadloom 的真正价值是**设置页的归档/删除管理 + 可恢复删除 + agent 工具面的「会话 → 新会话」**（D-029 删除了会话库/独立管理面；fork 剩余缺口见 D-014/D-015）。
-2. **唯一必须自补的 Host 能力是「删除」**：DSH 没有官方删除 API（设计 note 明确"等真实消费者再加"）。插件侧用「回收站优先 + 跨进程写租约 + 目录移动」实现，长期向上游补 `SessionPersistence.delete()`。
-3. **Web 半不能新增 `@Remote` 命名空间**（Typert 构建期生成、客户端命名空间固定）。删除/回收站走 **`ctx.webServer` 前缀路由 + 同源相对 fetch**，这是已发布第三方插件的生产级做法。
-4. **UI 入口 = 设置页两个 `settings.section` + 会话行 "..." 菜单一项（D-030）**：不注册侧栏入口、不注册 `main` 面板；「已归档的聊天」「Threadloom 配置」由 DSH 设置对话框承载；会话行菜单只保留「删除聊天…」。已归档列表用 Host bridge `list`（`includeArchived: true, archivedOnly: true`）只读归档行，取消归档复用官方 `ctx.uiWorkspace.unarchiveSession`；删除一步完成：`delete`/`delete-many` 内部走 trash 管线后立即 purge，不再有用户可见的回收站页面。
-5. **包形态 = 普通 npm 包**：`dsh.bundle.patch` + Host ESM 入口 + `dsh.client` 浏览器半 + 顶层 `engines.dsh`；浏览器半是 `window.__ModuleLoader__.load({id, factory})` 经典脚本，React 等 11 个 platform seed 必须 external。
+## Host 半
 
-## 1. 事实基线（0.2.1-rc.3，已核实）
-
-### 1.1 能力矩阵（摘要）
-
-| 能力 | 现状 | Threadloom 的处理 |
-|---|---|---|
-| 列表 / 搜索 | Host `sessionQuery.listSessions/filterSessions`；Web `session.list` / GUI 侧栏；内容全文搜索默认关闭（`openAt: never`） | 管理页复用 `remote.session.list` + 客户端 standard hooks；内容检索作为可选能力（profile 开启 sqlite FTS 时启用，见 D-007） |
-| 详情 | 无单一 DTO；由 header + `sessionPersistence.stat` + projection cache + `traceSession` 组合 | Host 侧组装 detail DTO |
-| 改名 | ✅ `sessionTitle.rename`（live）；Web `session.rename`（自动 resume 冷会话） | 复用 Remote |
-| 置顶 / 归档 | ✅ `workspaceRegistry.pin/unpin/archive/unarchive`；归档是**逻辑标记**，文件不动，`stopActivity` 可停运行中工作 | 复用 Remote；不移动文件、不重做状态机 |
-| 删除 | ❌ 无任何官方 API / 命令 / 路由 / 事件 | **自建**：回收站 + 永久删除 + 子代理级联（D-003/D-004/D-005） |
-| fork（分叉会话） | ✅ `session.fork`（`atSeq` 截断、冷会话可）；UI 有 3 个入口，其中**会话页每轮末尾的分支按钮可按完成轮选 `atSeq`**；**tool 面没有对应工具**。版本差异：已发布 rc（rc.2/3/4）的 fork 写 `parentSession`，HEAD 不写 | 复用 Remote；工具面缺口见 D-015；剩余交互缺口（轮中截断、Esc Esc、`/side`）见 D-014；级联只按 `origin==='subagent'`（D-004） |
-| 导出 | ✅ `/export`、`/api/session.export`、`/api/session.markdown` | 二期复用 HTTP 路由/格式化函数 |
-| 跨 workspace 移动 | ❌ 实际不可行（header 不可变；`attachSession` 要求 cwd realpath 匹配） | 明确非目标（D-012） |
-| 内容搜索 | 🟡 需要 profile 开启 `session-query-sqlite` 索引 | 可选降级，不默认自建索引 |
-| 运行中会话 | 🟡 归档支持 `stopActivity`；删除无 | 拒绝直接删除，先归档再删（D-005） |
-
-### 1.2 工具面（agent tools）现状
-
-DSH 的工具面（`ctx.tools` → 模型可见工具）里**没有**「从会话创建会话」的工具。逐个核实 `docs/tool-catalog.md` + 当前进程 `Tool` inspect 结果：
-
-| 工具 | 实际语义 | 能否当「从会话新建会话」用 |
-|---|---|---|
-| `session_search` / `session_trace` / `session_event_*`（`@deepseek-ai/dsh-tool-session-query`，opt-in） | 只读检索/追踪 | ❌ 只读 |
-| `subagent`（spawn 后端） | 委派一个干净子代理会话 | ❌ 空会话，不是从会话派生 |
-| `subagent_fork`（alias，`@deepseek-ai/dsh-subagent-fork-in-process`） | 委派一个子代理会话，seed = 父会话**已完成轮次**的快照（不含当前进行中轮） | ⚠️ 机制最接近，但它是**子代理委派**：结果回传给父会话，不是用户可见/可切换的平级会话 |
-| `subagent_codex` / `spawn_teammate` / `workflow` / `ralph` | 外部/团队/工作流子会话 | ❌ 都不是用户语义的「新会话」 |
-| （无） | `session_create` / `session_fork` / `new_session` 这类工具**不存在** | — |
-
-`fork` 能力存在于 **Web Remote `session.fork`**（Client 可调，自动 resume 冷会话）、**Host `ctx.sessions.fork`（仅 live）** 和 **GUI**（会话页轮末分支按钮 / 侧栏菜单 / 快捷键），但都不是 tool。结论：**工具面上「会话 → 新会话」是空白**，Threadloom 可以补，且与 `subagent_fork` 的委派语义不同（输出应是新的、可切换的平级会话 id）。
-
-**Threadloom 的工具边界（M3 已收敛）**：
-
-- 0.1.0 已实现：只读 `session_butler_list`（含过滤/分页）、`session_butler_detail`；
-- 0.1.2 已实现（D-015 收口）：`session_butler_fork`（对**调用方自己**的会话分叉，默认最近完成轮、可选精确 `atSeq`；直接调用 Host `sessionController.fork`，语义同 Web Remote `session.fork`）、`session_butler_new`（按调用方会话 header 的 cwd/preset 新建空会话，并按 D-027 优先传调用方 Workspace 的 `workspaceId`，使新会话归属同一 workspace）；两者都只操作调用方会话，不接受任意 session id 或路径；
-- 删除类写操作**不**作为工具暴露（D-003），只走管理页/命令面。
-
-### 1.3 关键约束
-
-- **服务可用性**：`sessionQuery`/`sessionPersistence`/`sessionTitle`/`storageDomain` 属于 base；`workspaceRegistry` 在 **R=rc.3 只有 web-app**，HEAD 的 sdk-app 也挂（`89619e67` 之后），headless/acp 没有。必须用 `ctx.get(...)` 探测可选能力。
-- **归档语义**：只写 `~/.dsh/storages/workspace.json` 的 `archivedSessionIds`，文件原地不动；归档会话在 Web 侧不可打开，子代理后代被 `agent/pre-step` 门禁冻结；**不级联标记**子会话。
-- **血缘**：`header.parentSession` + `header.origin === 'subagent'`。**fork 的版本行为不一致**：已发布 rc 通道（rc.2/rc.3/rc.4）的 fork 都写 `parentSession`；HEAD（2026-10-23 提交 `b096659` 起）改为不写。因此级联**只能**按 `origin === 'subagent'`，绝不能按 `parentSession`（否则在已发布版上会误伤 fork）。详见 `research/dsh-session-management-v2.md` §5.3。
-- **无删除事件**：`api-session/removed` 只对 live session dispose 发出，冷会话删除没有任何客户端推送 → 管理页操作后自行刷新。
-- **存储重构期**：`Session` / `SessionPersistence` 有 proposed 的整体重构。插件只走公开 Service、不解析 `session.v4.jsonl.zstd`、不 import 具体实现包；删除前用 `stat().location` 的 kind 判断（`jsonl` 才按目录删，其他形态拒绝）。
-- **兼容判定**：只认顶层 `engines.dsh`；`dsh.engines.dsh` 静默失效。当前声明 `>=0.2.1-rc.2 <0.3.0-0`（M1–M3 用到的 Host/Client API 已逐项在 rc.2 发布包上审计，见 `research/dsh-session-management-v2.md` §5.4）。
-
-## 2. 包结构
-
-单 npm 包，双端产物（详见 [`dsh-packaging-contract.md`](./dsh-packaging-contract.md) §2/§6）：
-
-```
-dsh-session-butler/
-├── package.json              # dsh.bundle.patch / dsh.client / engines.dsh / exports / files
-├── cordis.patch.yml          # 插入 loader 行：id=session-butler, name=裸包名
-├── icon.svg                  # 展示图标（≤256 KiB）
-├── locale/{en,zh}.json       # meta.title / meta.description / meta.detail
-├── README.md · CHANGELOG.md · LICENSE
-├── docs/usage.md             # meta.detail 目标（随包发布）
-├── src/
-│   ├── index.ts              # Host 入口：name / inject / Config / apply
-│   ├── config.ts             # Schemastery Config（已实现）
-│   ├── shared/identity.ts    # 稳定标识：包名、行 id、panel id、API 前缀
-│   ├── host/                 # M1+：service / capabilities / trash / bridge / commands / tools
-│   └── client/               # 0.2.1：apply、设置页两入口、行菜单、插件页健康、bridge 客户端
-├── scripts/{build-client,validate-package,clean}.mjs
-├── tests/                    # node:test 产物冒烟 + manifest 契约
-└── lib/                      # 构建产物（发布，不提交）
-    ├── index.js + types/**    # Host ESM + d.ts
-    └── client.js (+map)       # Client classic-script 工厂
-```
-
-**构建**：Host 用 `tsc`（NodeNext ESM + declaration）→ `lib/`；Client 用 `esbuild` 打成 CJS + banner/footer 包装成 `window.__ModuleLoader__.load(...)` 单文件。选择 esbuild 而非 tsdown：依赖更少、包装头部完全可控；后续若需要动态拆包再迁移（见 D-010）。
-
-## 3. Host 半架构（目标）
-
-```
-src/index.ts ── apply(ctx, config)
-   ├── inject: ['sessionQuery','sessionPersistence','storageDomain','commands','tools']
-   ├── 可选探测: ctx.get('workspaceRegistry'|'sessionTitle'|'subagents'|'agents')
-   ├── ctx.provide('sessionButler')  ← Host Service（listSessions/detail/trash/restore/purge/batch）
-   ├── ctx.commands.register('/session-butler')   ← 无 UI 也能用
-   ├── ctx.tools.register(list/detail + new/fork)  ← M3 只读；0.1.2 补会话创建/分叉（破坏性写操作不注册）
-   └── ctx.webServer.register(prefix '/session-butler/api') + connection.requestRejection
-```
-
-### 3.1 模块划分（M1 落地时）
+`apply` 先构造 `SessionButlerService` 并 `provide('sessionButler')`，再按宿主实际存在的服务挂载各表面：`webServer` + `connection` 在才挂 HTTP bridge；`tools` 在才注册工具；`commands` 在才注册 `/session-butler`。可选服务一律用 `ctx.get` 探测，缺了就降级，不阻塞插件加载。
 
 | 模块 | 职责 |
 |---|---|
-| `host/ports.ts` | 所有 Host/Client 依赖的结构化端口类型（不 import `@deepseek-ai/dsh-*`）；`ButlerHostContext` 抽象 `get/provide/effect/inject` |
-| `host/locate.ts` | id 寻址、路径校验（`basename === id`、位于 sessions root 下、无 symlink 逃逸）、`locateAll` |
-| `host/lineage.ts` | 子代理后代枚举：`sessionQuery.traceSession`，仅 `origin === 'subagent'`；`subagentDescendants` 过滤 fork |
-| `host/trash-store.ts` | 回收站目录 `~/.dsh/session-butler/trash/<id>/` + 原子 sidecar 元数据（id、原路径、删除时间、header 快照、descendantIds） |
-| `host/service.ts` | `SessionButlerService`：`listSessions` / `detail` / `trash` / `restore` / `purge` / `listTrash` / `trashMany` / `restoreMany`；删除管线也在本模块（见 §3.3） |
-| `host/read-model.ts` | 只读投影：header 快照、血缘树、事件折叠（turn/step/token/tool/title），供 list/detail/工具/桥共用 |
-| `host/tools.ts` | agent 工具：只读 `session_butler_list` / `session_butler_detail` + 非破坏性 `session_butler_new` / `session_butler_fork`（0.1.2）；输出 schema + render；删除等破坏性写操作不暴露给模型 |
-| `host/bridge.ts` | HTTP 前缀路由：方法分发、JSON 限长、owner-only、稳定错误码 |
-| `host/command.ts` | `/session-butler …` 命令面（list/trash/restore/purge） |
-| `host/fs.ts` | 有界读写、原子 rename、JSON sidecar 工具 |
-| `shared/identity.ts` | 稳定标识（已实现） |
-| `shared/errors.ts` | 稳定错误码联合：`session-not-found` / `session-running` / `session-locked` / `session-unresolved-path` / `storage-unsupported` / `trash-corrupt` / `forbidden` / `invalid-request` / `internal` |
+| `service.ts` | 用例：list / detail / trash / restore / purge / delete / deleteMany / health |
+| `ports.ts` | 只声明用到的 DSH 接口子集（sessionQuery、sessionPersistence、workspaceRegistry、agents、sessions、webServer…），测试用假对象实现同一契约 |
+| `locate.ts` | 按 session id 在 sessions root 下定位目录；先精确匹配，再试历史 `session-` 前缀变体，并用日志头校验 |
+| `lineage.ts` | 从 `traceSession` 里挑出 `origin === 'subagent'` 的后代，供级联删除 |
+| `trash-store.ts` | 回收站：元数据 + payload 目录、同盘移动、冲突检查、恢复、清除 |
+| `read-model.ts` | 把 header、live 状态、归档/置顶、标题、事件统计拼成 list/detail 投影 |
+| `bridge.ts` | `/session-butler/api/*` 前缀路由，同源 POST 信封 |
+| `command.ts` | `/session-butler list\|trash\|restore\|purge` |
+| `tools.ts` | 四个 agent 工具：list / detail / new / fork |
+| `schema.ts` | 配置与请求体校验 |
+| `fs.ts` | 存在性检查、目录移动、原子写 JSON、受控删除 |
 
-### 3.2 数据来源
+### 读取
 
-- **列表**：`sessionPersistence.list()`（持久化 header）+ `sessions.list()` / `agents.list()` 补 live 行 + best-effort `readTitleSnapshots(ids)` 补标题；`workspaceRegistry.archivedSessionIds/pinnedSessionIds` 补归档/置顶。过滤（query/cwd/归档/子代理）、排序（createdAt 倒序）、分页（默认 25，上限 100）都在 Host 侧完成。
-- **详情**：`sessionPersistence.stat(id)` 是唯一 header 来源（对 `migration-required` 同样可用）；`traceSession` 取祖先/后代；随后 **best-effort** `observeSession(id,{projectionMode:'none'})` 并折叠原始事件（`turn/end`、`step/end`、`user/message`、`assistant/message.usage`、`tool/call`、`tool/result`、`session/title`）得到轮数/步骤/token/活动时间/标题。
-- **不去依赖 projection cache**：rc.2 release 组合与 Web 组合的 projection 键不一致，`detail` 只信 stat + 事件；事件读取失败（或迁移中）返回 `enrichment: {status:'partial', reason}` 而不是整体失败。列表/详情/工具/桥共用这套只读投影。
-- **回收站**：自有 `storageDomain`；不依赖 DSH 的归档集合。
-- **一致性**：列表以 `sessionQuery` 为准；删除操作完成后清 `pinned/archived` 状态由官方服务提供（`workspaceRegistry` 可选）。
+`list` 合并三个来源：持久化快照、live Session/Agent、Workspace 的归档与置顶集合，再批量读标题。`detail` 以 `stat` 的 header 为骨架，追加 `traceSession` 的血缘和事件折叠出的 token/体积；日志读不到时返回 `enrichment: partial` 而不是失败。
 
-### 3.3 删除管线（核心）
+### 删除
 
-状态机：`active → trashed → (restored → active) | (purged)`
+1. 预检：拒绝删除当前会话；拒绝 `migration-required` 的会话；按配置展开 subagent 级联集合（fork 永不在集合里）。
+2. 加载检查：本进程仍持有 Session/Agent 时直接拒绝——运行中给 `session-running`，仅加载给 `session-in-use`。插件拿不到释放句柄的能力，不会为了删除去停任务或改状态。
+3. 移动：写租约探测发现其他进程持锁则拒绝；通过后把目录同盘移入回收站并写元数据，任一步失败回滚已移动的部分。
+4. 清除：GUI 删除在移动成功后立即 purge 回收站条目，因此用户看到的是"一步删除"，回收站只作为失败时的安全网。
 
-```
-trash(id, { cascade }):
-  1. resolve(id)                     # 存在性、header、location.kind
-  2. 运行中检查                       # sessions/agents 存在 → 拒绝 session-running
-  3. 路径校验                         # location.kind === 'jsonl'，basename === id，realpath 在 sessions root 内
-  4. open(id, 'write') → close()      # 跨进程写租约探测；失败 → session-locked
-  5. descendants = lineage(id) ∩ origin==='subagent'（cascade 时）
-  6. rename(原目录 → trash/<id>/)     # 同盘原子移动
-  7. storageDomain 记录 {id, originalPath, deletedAt, header, descendants}
-  8. unarchive/unpin（若 workspaceRegistry 存在）
-  9. 级联：对 descendants 逐个执行 1–8（失败则整体回滚描述，不静默吞）
-restore(id): 校验 trash 记录 → rename 回原路径 → 清记录 → 返回需要恢复的 descendants
-purge(id):   trash 记录存在 → rm -rf trash/<id> → 删除记录（permanentDelete=confirm 时需完整 id）
-```
+## Client 半
 
-不可变式：**任何一步失败都保持原状或停在上一个可恢复状态**，错误码稳定、可操作。
+`index.tsx` 是注册入口：设置分区（「已归档的聊天」「Threadloom」）、会话行 `...` 菜单的删除项、插件页健康区块。`settings.tsx` 负责已归档列表（搜索、按项目分组、取消归档、永久删除、全部删除）和四个配置字段；`menu.tsx` 只做确认 + 调用；`bridge.ts` 用同源相对路径发 POST，失败按稳定错误码映射成中英文提示；`locale.ts` 是唯一文案来源。
 
-**M1 实现备注**：
+## HTTP bridge
 
-- 目录定位：`SessionLocator` 扫描 `<dshHome>/sessions/<project>/<dir>`，以 session id 为权威（目录名可能与 id 不同前缀），候选名先精确、再试 `session-` 前缀变体；能解压 v4 header 时校验 `header.id`，并拒绝 symlink 逃逸/歧义匹配。
-- 回收站布局：`<dshHome>/session-butler/trash/<project>/<dir>` + 同名 `.json` sidecar（原子写入）；restore 的目标路径由 sidecar 推导，不维护全局索引。
-- 预检顺序：迁移态 → 运行态（D-013 stopActivity + 有界轮询）→ 写租约 → 目录定位 → trash 目的地占用；全部通过后才开始移动，移动失败按逆序回滚。
-- 级联：`sessionQuery.traceSession` 的 descendants 中仅保留 `origin === 'subagent'`；普通 fork（已发布版带 `parentSession`）不级联。
-- 命令面：`/session-butler list|trash|restore|purge`，文本结果；命令不能 trash 发起它的当前会话。
+- 路径固定前缀 `/session-butler/api/<method>`，同源 POST，JSON 信封 `{ ok: true, value }` / `{ ok: false, error: { code, message } }`。
+- 只接受同源请求；没有 `webServer` 的 headless/ACP 组合不挂路由。
+- 错误码是稳定标识（`session-in-use`、`session-locked`、`trash-conflict`…），客户端按码选文案，不解析 message。
 
-### 3.4 HTTP 桥（Web → Host 删除能力）
-
-外部 npm 插件无法新增 Typert `@Remote`，因此：
-
-- Host：`ctx.webServer.register({ kind: 'prefix', path: '/session-butler/api', handler })`；handler 首行 `ctx.connection.requestRejection(req)`，随后只接受 owner 连接、`POST`、`application/json`、限长 body（如 64 KiB）；
-- Client：**document-relative** `fetch('session-butler/api/trash', ...)`（无前导 `/`，兼容反向代理挂载）；
-- 信封：`{ ok: true, value } | { ok: false, error: { code, message, details? } }`；
-- 方法（M2/M3 已实现）：`status` / `list` / `detail` / `trash` / `trash-many` / `restore` / `restore-many` / `purge` / `list-trash`；
-- 协议错误用 400/404/405/413（同信封）；领域错误固定 HTTP 200 + `ok:false`，页面直接展示稳定错误码；
-- 不做流式；不做通用 RPC；所有参数在 Host 侧重新校验（客户端不可信）。
-
-**实现备注（M2）**：
-
-- 桥在 `ctx.inject(['webServer','connection'], scope => mountBridge(scope, service))` 里挂载：headless/ACP 组合没有这两个服务，插件仍保留命令面；Web 组合在服务就绪后才注册前缀路由。
-- `sessions`/`agents`/`workspaceRegistry` 用 `() => ctx.get(...)` 延迟取值，避免 Web 组合的激活顺序导致插件启动时服务尚未存在（M2 实测发现并修复）。
-- 客户端 `fetch('session-butler/api/<method>')` 无前导 `/`；认证由 `connection.requestRejection({headers})` 完成，未认证请求实测 401。
-- M3 新增 `list`（筛选/分页）与 `trash-many`/`restore-many`：`sessionIds` 必须是 1–50 个非空字符串，重复 id 去重；批量入口逐项独立处理，单项失败不影响其余项，`moved`/`failed` 为聚合结果。
-
-### 3.5 命令与工具面
-
-- 命令（M1 已实现）：`/session-butler list|trash|restore|purge`（`ctx.commands.register`），让无管理页的场景也能用；归档/取消归档直接复用官方 UI；
-- 工具（M3 已实现，0.1.2 扩展）：`session_butler_list` / `session_butler_detail` 只读；`session_butler_new` / `session_butler_fork` 补「会话 → 新会话」工具面（只创建、不删除）；删除等破坏性写操作**不**注册为 agent 工具，避免模型误删。
-  - 注册方式必须**结构化**：第三方已发布插件不能 import `@deepseek-ai/dsh-tools`，因此 `host/tools.ts` 手写 `{name, description, parameters, output:{schema, render}, execute}` 交给 `ctx.tools.register`；`parameters` 不是 `defineTool` 的逐属性 DSL，而是**编译后的对象根 JSON Schema**（`host/schema.ts` 把 `required:true` 属性表编译成 `{type:'object', properties, required?}`），`output.schema` 同样用 DSH 支持的 JSON Schema 子集（均已用真实 `assertSupportedJsonSchema` 校验）。裸属性表会被 native function calling 原样发给 provider 并报 `type: null`（0.1.1 修复）。
-  - `list` 参数：`query?`/`cwd?`/`includeArchived?`/`includeSubagents?`/`limit?`；输出 `{total,truncated,sessions[]}`，render 为逐行文本（id、标题、cwd、相对时间、flags）。
-  - `detail` 参数：`sessionId`（必填，精确 id）；输出 header、stats、tokens、size/eventCount、enrichment、扁平化后代（`depth`）；render 对有界后代做截断说明。
-  - `new` 参数：无；cwd/agentPreset 取自 `exec.agent.session.header`；Workspace 经可选 `workspaceRegistry.list()` 解析（先按调用方 sessionIds、再按 cwd），传 `workspaceId` 让 Host 把新会话 attach 到同一 workspace（D-027；无 registry 时回退 cwd），返回新会话 id。
-  - `fork` 参数：`atSeq?`（非负安全整数）；源会话固定为 `exec.agent.session.id`，调用 `sessionController.fork` 返回 `{sessionId, sourceSessionId, atSeq?}`。
-  - 工具在 `ctx.inject(['tools'], scope => …)` 里注册（headless 也可能没有 tools）；服务对象本身暴露只读方法，桥与工具共享同一实现。
-
-## 4. Client 半架构（M2 已实现）
+## 磁盘布局
 
 ```
-src/client/index.tsx       # apply/inject：slots/locale/uiWorkspace/sessions
-   ├── ctx.slots.inject('settings.section', …) × 2   # 已归档的聊天 / Threadloom
-   ├── ctx.slots.inject('sidebar.workspaces.session.menu.item', …)  # 仅「移入回收站…」
-   └── ctx.slots.inject('plugins.detail.badge' | 'plugins.detail.section', …)  # 健康/诊断
-src/client/settings.tsx    # 两个设置分区：已归档列表/一步删除、配置表单 + 确认对话框
-src/client/menu.tsx        # 会话行 "..." 菜单项：删除聊天…（原生菜单样式 + 确认）
-src/client/plugin-page.tsx # 插件详情页健康徽标与诊断区块（配置已迁到设置）
-src/client/bridge.ts       # document-relative fetch + 网关信封 + BridgeError
-src/client/locale.ts       # NS='session-butler' + zh/en 字典（ctx.locale.register 运行时注册）
-src/client/contract.ts     # 本地结构化端口（不 import 任何 @deepseek-ai/dsh-* 包）
+~/.dsh/sessions/<project>/<session>/session.v4.jsonl.zstd   # 只读定位，不解析
+~/.dsh/session-butler/trash/<project>/<dir>/                # payload
+~/.dsh/session-butler/trash/<project>/<dir>.json            # 元数据
 ```
 
-**M2 实现备注**：
+会话目录只会被整体移动，不会被逐文件改写；跨盘移动直接拒绝，避免出现两份真源。
 
-- 每类贡献通过**独立的 `slots.inject`** 注册：`settings.section` 由设置 shell 声明，`sidebar.workspaces.session.menu.item` 由 workspace 浏览器声明，`plugins.*` 由插件页声明。M2 最初把 `sidebar.panellist` 嵌在 `inject('main')` 回调里，真实 Web 启动时 `main` 先声明、侧栏插槽尚未声明，`register` 抛 `slot "sidebar.panellist" is not declared`，整插件显示 failed；M4 首轮浏览器验收定位并改为独立注入。D-023 删除侧栏入口；D-029 进一步删除 `main` 面板与 `ctx.layout.selectPanel`，入口全部收进 `settings.section`。
-- 字典先注册、槽位后注册，并用一个 effect 的 disposer 数组统一逆序释放；注册中途抛错时先回滚已注册项再抛出，避免 loader 重试时出现 `locale namespace ... already has locale`。
-- 设置页的删除/全部删除/永久删除确认框用页内 `position: fixed` 对话框（状态与页面同源，避免为浮层引入跨组件 store）；行菜单的删除用 `window.confirm`（菜单项会随菜单关闭卸载，无法安全持有弹窗状态）。
-- 数据刷新：设置页的取消归档/删除/恢复/永久删除后重新拉取本页数据；删除/取消归档后调用 `ctx.sessions.refresh()` 让侧栏跟上。改名/置顶/归档（官方）仍由 DSH UI 负责。
-- 已归档的聊天：bridge `list`（`includeArchived: true, archivedOnly: true, includeSubagents: false, limit: 100`）只读归档行；「永久删除」调 `delete`、「全部删除」按 ≤50/批调 `delete-many`；Host 在内部 trash 管线后立即 purge。CLI 仍可用 `list-trash`/`restore`/`purge`。
+## 打包
 
-### 4.1 设置页与插件页集成（0.2.1 / D-030）
+`dsh.bundle.patch` 让 `dsh plugin add` 往 profile 的 loader 层插一行；`dsh.client` 声明浏览器半；`engines.dsh` 是唯一兼容判定。浏览器半是经典脚本，React 等 platform seed 必须 external，由宿主提供。
 
-- **配置**：`src/config.ts` 的 5 个字段全部 `.volatile()`（`trashRetentionDays`、`cascadeSubagents`、`permanentDelete`、`liveSettleTimeoutMs`、`inlineMenuEnabled`），客户端经 `ctx.get('configForms').get('session-butler')` 取得表单，`ThreadloomConfigSection` 渲染并保存 4 个字段（`permanentDelete` 仅保留 schema 兼容与 CLI purge）；Host service 在使用点读取（`() => readConfigValue(...)`）以支持热生效。
-- **设置页贡献**：`src/client/settings.tsx` 通过 `settings.section` 注册两个分区（`archived-sessions`、`threadloom`，order 44/45）；宿主未声明 `settings.section` 时静默跳过。
-- **行菜单**：`inlineMenuEnabled`（或旧字段 `panelEntryEnabled`）控制是否注册「删除聊天…」；点击后 `window.confirm`，成功调用 bridge `delete` 并 `ctx.sessions.refresh()`。
-- **插件页贡献**：只保留 `plugins.detail.badge`（健康徽标）与 `plugins.detail.section`（诊断区块）；`plugins.row.config`/`bundle.config`/`detail.actions` 已在 D-029 删除。
-- **健康快照**：`service.health()` + 桥 `status` 方法返回版本、存储可写性、后端能力、会话/回收站/运行中计数与最近 20 条错误；错误环形缓冲由桥在 `ok:false`/内部错误时记录。
+## 测试
 
-关键不变量：
-
-1. page 与 sidebar row **同一 effect 生命周期**：两个槽位各自注册、统一逆序释放；不得把某个槽位的 `register` 嵌套进另一个槽位的 `inject` 回调（两个槽位的 owner 插件不同）。
-2. 面板 key / sidebar id 用 `session-butler`，与包名命名空间隔离；`PANEL_ID` 来自 `shared/identity.ts`。
-3. 页面自己负责布局（`main` 槽只给中栏容器）：照抄 Plugin Manager 的 `page`/`pageBody` 骨架与主题 token（`--dsw-alias-*`）。
-4. client bundle 只能 `require` 11 个 platform seed + `dsh.client.external`；其他宿主能力一律走 Cordis 服务；首版单文件，不用动态 `import()` 拆包。
-5. 文案走 Client locale 服务（运行时 `ctx.locale.register`）+ 包 `locale/*.json`（插件页 meta）；中英文都要齐。
-
-## 5. 里程碑
-
-| 阶段 | 内容 | 验收 |
-|---|---|---|
-| **M0（已完成）** | 包脚手架、构建/打包/校验管线、配置、展示资源、三份调研 + 架构/决策/发布文档 | `pnpm run verify` 全绿；`npm pack` 清单闭环 |
-| M1 | Host 删除核心：capabilities/resolve/trash/delete + storageDomain + 单元/集成测试（临时 `DSH_HOME` fixture） | 不接 UI 也能通过临时 profile 命令验证 trash/restore/purge/级联 |
-| **M2（已完成 2026-10-28）** | Web 管理页：main panel + 同源 POST 桥 + 列表/筛选/回收站/删除确认；locale zh/en；SSR/装配测试（侧栏入口已于 D-023/2026-10-29 移除，改为会话行菜单） | 临时 profile 安装后：bundle 被分发、桥 401/200/领域错误实测、页面 SSR 渲染通过；浏览器内点击验证留待 M4 验收 |
-| **M3（已完成 2026-10-28）** | 只读 agent 工具（list/detail）+ 批量操作 + 详情补全（轮数/token/血缘树） | `pnpm run verify` 52 tests 全绿；工具 schema 通过真实 DSH 校验；桥/页面/SSR 测试覆盖批量与详情；无 UI 场景可只用工具/命令 |
-| M4 | 发布验收：`npm pack` → 临时 profile link 安装 → registry 安装复验 | 见 `docs/publishing.md` 阶段 C/E |
-
-## 6. 兼容与升级策略
-
-- 收窄而非放宽：DSH 升级后先跑 `pnpm run verify`，再人工核对 `engines.dsh`；必要时收紧范围，不依赖 exemption。
-- 可选能力全部 `ctx.get` 探测，缺失时对应功能隐藏/降级，不抛错。
-- 不 import 具体实现包（`session-persistence-jsonl` 等）；只依赖 `@deepseek-ai/cordis`/`schemastery` peer 与 Host Service 契约。
-- 删除逻辑对存储形态做防御：`location.kind !== 'jsonl'` → `storage-unsupported`，等待上游 `SessionPersistence.delete()`（见 D-003 的后续项）。
-- 客户端 bundle 的 platform seed 列表与 DSH 版本绑定，已在 `scripts/build-client.mjs` 显式列出；升级 DSH 时同步核对。
-
-## 7. 风险清单
-
-| 风险 | 影响 | 缓解 |
-|---|---|---|
-| 无官方删除 API，目录直删依赖当前 JSONL 布局 | 上游存储重构后失效 | kind 判断 + 稳定错误码 + 推动上游补 API |
-| 跨进程：列表是每进程视角 | 多开 DSH 时看不到对方 live 会话 | 删除前 `open(id,'write')` 租约探测；拒绝无法确认的目标 |
-| 删除无客户端事件 | 管理页与侧栏不同步 | 操作后主动 refresh + 本地行移除；`workspace.follow` 处理归档/置顶 |
-| archive 语义与用户直觉不同（逻辑隐藏而非移动） | UI 文案误导 | 文案明确「归档 = 从列表隐藏，可恢复」；不复刻 Codex 的移动式归档 |
-| fork 与血缘混淆 | 误删历史 fork | 级联只沿 `origin === 'subagent'`；测试覆盖 |
-| 内容搜索默认关闭 | 用户期待落空 | UI 显示能力探测结果并给开启指引；不默认改 profile |
-| 客户端依赖内部服务（sessions/workspaces/uiWorkspace） | DSH 升级可能破坏 | 版本夹紧 + 发布前 live slot 复核 + 尽量用 standard hooks |
-| 在 HMR profile 中重装同版本 | `already-installed` | 发布/升级流程用 remove → install 或 Web Update |
-
-## 8. 参考
-
-- 调研（**以 v2 为准**）：[`dsh-session-management-v2.md`](../research/dsh-session-management-v2.md) · 打包契约 [`dsh-packaging-contract.md`](./dsh-packaging-contract.md) · 第一版存档 [`dsh-host-apis.md`](./dsh-host-apis.md) / [`dsh-web-ui.md`](./dsh-web-ui.md) · Codex 对标 [`codex-session-management.md`](../research/codex-session-management.md)
-- 决策：[`decisions.md`](./decisions.md) · 发布：[`publishing.md`](./publishing.md) · 用户文档：[`usage.md`](./usage.md)
+单元/契约测试直接跑构建产物，L1 用真实 `dsh web` + 临时 `DSH_HOME` 验证组合与路由，L2 用 Playwright 跑真实设置页与行菜单。细节见 [testing.md](./testing.md)。

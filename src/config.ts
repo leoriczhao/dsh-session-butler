@@ -52,7 +52,7 @@ export interface ThreadloomConfig {
   liveSettleTimeoutMs: Volatile<number>
   /**
    * Whether Threadloom adds its actions to every Session row's "..." menu
-   * (session details and the session library). Turning it off removes those
+   * (delete session). Turning it off removes that
    * inline entries only; commands, agent tools and the Plugins-page block stay.
    */
   inlineMenuEnabled: Volatile<boolean>

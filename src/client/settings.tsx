@@ -2,7 +2,7 @@
  * Settings sections owned by Threadloom (D-029).
  *
  * The Codex desktop reference exposes chat management in Settings, not as a
- * session library page: Archived chats list, search, unarchive/delete/all-delete,
+ * Settings sections: the archived-chats list (search, unarchive, delete,
  * plus the plugin's own trash and configuration pages. These components are
  * registered into the DSH settings shell's `settings.section` slot; the shell
  * owns the modal and the nav, so Threadloom renders only each page body.

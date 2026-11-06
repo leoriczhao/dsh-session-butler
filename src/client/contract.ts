@@ -4,7 +4,7 @@
  * As with the Host ports, the plugin does not import Harness Client packages at
  * runtime or build time; it relies on the audited surfaces instead (slots,
  * locale, session/workspace stores, uiWorkspace navigation). Every shape here
- * mirrors the rc.2 declarations listed in `research/dsh-session-management-v2.md`
+ * mirrors the rc.2 declarations audited for this plugin
  * §5.4.
  *
  * @module dsh-session-butler/client/contract

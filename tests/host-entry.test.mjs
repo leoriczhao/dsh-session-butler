@@ -12,7 +12,6 @@ test('host entry exports a Cordis plugin identity', () => {
 test('host entry exports the stable identifiers used by the Client half', () => {
   assert.equal(host.PLUGIN_ID, 'dsh-session-butler')
   assert.equal(host.PLUGIN_ROW_ID, 'session-butler')
-  assert.equal(host.PANEL_ID, 'session-butler')
   assert.equal(host.API_PREFIX, 'session-butler/api')
 })
 

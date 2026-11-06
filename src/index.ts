@@ -33,10 +33,10 @@ import type {
 } from './host/ports.js'
 import { SessionButlerService } from './host/service.js'
 import { registerButlerTools, registerCreationTools, registerReadTools } from './host/tools.js'
-import { API_PREFIX, PANEL_ID, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
+import { API_PREFIX, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
 import { PLUGIN_VERSION } from './host/version.js'
 
-export { Config, PLUGIN_ID, PLUGIN_ROW_ID, PANEL_ID, API_PREFIX }
+export { Config, PLUGIN_ID, PLUGIN_ROW_ID, API_PREFIX }
 export type { ThreadloomConfig }
 export { SessionButlerService } from './host/service.js'
 export type {

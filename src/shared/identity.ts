@@ -13,9 +13,6 @@ export const PLUGIN_ID = 'dsh-session-butler'
 /** Loader row id declared in `cordis.patch.yml`; profile patches target it by id. */
 export const PLUGIN_ROW_ID = 'session-butler'
 
-/** Key of the library page in the `main` slot (opened from the Session row menu, D-023). */
-export const PANEL_ID = 'session-butler'
-
 /**
  * Document-relative HTTP prefix of the Host bridge that owns trash/delete.
  *

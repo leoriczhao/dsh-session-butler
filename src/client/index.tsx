@@ -6,7 +6,7 @@
  *   - Settings → Archived chats (list / search / unarchive / delete)
  *   - Settings → Trash (recoverable deletions)
  *   - Settings → Threadloom (the plugin's configuration form)
- * plus one session-row menu action ("Move to trash") and the plugin-page
+ * plus one session-row menu action ("Delete session") and the plugin-page
  * health badge/diagnostics. Every contribution degrades silently when the
  * host does not declare its slot.
  *

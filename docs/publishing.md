@@ -1,8 +1,7 @@
 # 发布流程（Runbook）
 
 > 目标：把 `dsh-session-butler`（Threadloom）作为一个**可安装、可发现、可更新**的 DSH npm 插件包发布。
-> 契约细节（字段、校验链路、25 条坑位）见 [`dsh-packaging-contract.md`](./dsh-packaging-contract.md)；本文只记录本项目要执行的命令与顺序。
-> 当前 DSH 运行时基线：`0.2.1-rc.2` 起（`engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`；下限经 API 审计，见 `research/dsh-session-management-v2.md` §5.4。npm `latest` 当前是 rc.2）。
+> 当前 DSH 运行时基线：`0.2.1-rc.2` 起（`engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`，下限经已用到的 Host/Client API 在 rc.2 上逐项审计）。
 
 ## 0. 前置
 
@@ -127,14 +126,14 @@ dsh --profile tl-iso --no-open --port 3109
 插件页（`meta.detail`、图标、名称/版本/id）也在同一隔离 profile 实测：详情页完整
 渲染 `docs/usage.md`，组件状态 `1 total · 1 running`。
 
-![插件详情页](evidence/plugin-detail.png)
+!插件详情页
 
 页面证据截图（隔离 home，单个测试会话）：
 
-![会话管理页](evidence/web-page.png)
-![移入回收站确认](evidence/web-trash-confirm.png)
-![回收站条目](evidence/web-trash.png)
-![恢复后](evidence/web-restored.png)
+!会话管理页
+!移入回收站确认
+!回收站条目
+!恢复后
 
 首轮真实浏览器启动曾暴露 M2 客户端注册 bug（`slot "sidebar.panellist" is not
 declared`），修复见 `CHANGELOG.md` 的 “real-browser activation” 段；修复后上述检查
@@ -203,7 +202,7 @@ dsh --profile tl-fresh                          # 启动并复跑阶段 C 的 UI
 ## 发布后
 
 - 在仓库 Release 附上 `npm pack` 的 tgz（可选；git 安装场景需要 `prepare`，本项目未启用，推荐直接用 registry）。
-- 插件市场索引（dshmarket / awesome-dsh-plugin 等）：按 `docs/dsh-packaging-contract.md` §9 的 format 1 字段提交；至少需要 `name`、`version`（安装 spec）、`dsh` 元数据与 README/详情。
+- 插件市场索引（dshmarket / awesome-dsh-plugin 等）：按 早期调研文档 §9 的 format 1 字段提交；至少需要 `name`、`version`（安装 spec）、`dsh` 元数据与 README/详情。
 - 若发现发布事故：72 小时内可 `npm unpublish`，更推荐 `npm deprecate dsh-session-butler@<version> "reason"` 并发布修复版本。
 
 ## 本项目的发布门禁

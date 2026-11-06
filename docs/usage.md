@@ -119,5 +119,5 @@ dsh plugin --profile <profile> remove dsh-session-butler
 
 - 设计文档：`docs/architecture.md`
 - 决策记录：`docs/decisions.md`（D-030 为当前删除/入口设计，取代 D-029 的回收站部分）
-- 调研修正：`research/2026-10-29-research-corrections.md`
+- 调研修正：早期调研
 - 发布流程：`docs/publishing.md`

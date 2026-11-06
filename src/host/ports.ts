@@ -5,7 +5,7 @@
  * the plugin must keep working across the published rc channel (rc.2 / rc.3 /
  * rc.4) and avoid pinning implementation packages. Every port below was
  * audited against the `0.2.1-rc.2` release packages (see
- * `research/dsh-session-management-v2.md` §5.4); field names and signatures
+ * the released rc.2 packages); field names and signatures
  * mirror those declarations. At runtime the objects are the real Cordis
  * services fetched with `ctx.get(...)`.
  *
