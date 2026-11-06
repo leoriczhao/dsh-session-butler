@@ -6,7 +6,7 @@
 > DeepSeek Harness 的会话管理插件 —— 按 Codex 桌面端的形态管理会话：归档在设置里，删除一步完成。
 
 **npm 包名**：`dsh-session-butler`（产品显示名 **Threadloom**）
-**状态**：**0.2.1 已构建并验证，待发布**（npm 上最新为 0.1.0；0.1.1 修复 native function calling 的 `parameters` 根 schema，0.1.2 补齐 `session_butler_new` / `session_butler_fork` 工具并修复新会话的 Workspace 归属；0.2.0 把会话管理入口收进设置页并移除会话库面板；0.2.1/D-030 移除回收站页面，删除改为一步永久删除）
+**状态**：**0.2.2 已构建并验证，待发布**（npm 上最新为 0.1.0；0.1.1 修复 native function calling 的 `parameters` 根 schema，0.1.2 补齐 `session_butler_new` / `session_butler_fork` 工具并修复新会话的 Workspace 归属；0.2.0 把会话管理入口收进设置页并移除会话库面板；0.2.1/D-030 移除回收站页面，删除改为一步永久删除；0.2.2 由宿主协调释放空闲句柄并使用后端原生删除事务）
 **兼容**：DSH `>=0.2.1-rc.2 <0.3.0-0`（顶层 `engines.dsh`；下限经 M1–M3 用到的 API 在 rc.2 上逐项审计，见 `research/dsh-session-management-v2.md` §5.4）
 
 ---
@@ -27,9 +27,9 @@ DSH 0.2.1-rc.3 已经内置了改名、置顶、归档、fork、导出；**真�
 | 插件页集成 | ✅ 健康徽标 `plugins.detail.badge` + 诊断区块 `plugins.detail.section`（配置已迁至设置页） |
 | Codex 式入口 | ✅ 0.2.1/D-030（无侧栏按钮、无会话库面板；设置页两个分区：「已归档的聊天」「Threadloom」；会话行 "..." 菜单仅保留「删除会话」；`inlineMenuEnabled` 可关） |
 | i18n / 主题 | ✅ 中英文完整；跟随宿主主题 token |
-| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`/`0.1.2`/`0.2.1` 待 `npm publish`（需 2FA） |
+| 发布包（构建 / 打包 / 校验 / 发布 runbook） | ✅ 构建与校验完成；`0.1.0` 已上 npm，`0.1.1`–`0.2.2` 待 `npm publish`（需 2FA） |
 
-> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.1`（设置页入口 + 一步删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**；GitHub 有本地提交待 push。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 80 tests + npm pack 契约）与 `pnpm run test:e2e`（真实 dsh web 组合 + Playwright）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
+> **发布**：npm 上最新为 `dsh-session-butler@0.1.0`；`0.1.1`（schema 修复）、`0.1.2`（工具面补齐）、`0.2.0`–`0.2.2`（设置页入口、一步删除、原生空闲删除）均已构建、验证并提交，**待 `npm publish`（需要账号 2FA）**。源码托管在 [`leoriczhao/dsh-session-butler`](https://github.com/leoriczhao/dsh-session-butler)，npm 页面在 [`dsh-session-butler`](https://www.npmjs.com/package/dsh-session-butler)。验证：`pnpm run verify`（typecheck + build + 80 tests + npm pack 契约）与 `pnpm run test:e2e`（真实 dsh web 组合 + Playwright）；发布门禁与实测记录见 [`docs/decisions.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/decisions.md) 和 [`docs/publishing.md`](https://github.com/leoriczhao/dsh-session-butler/blob/main/docs/publishing.md)。
 
 ## 还差什么（D3 路线图）
 
@@ -37,7 +37,7 @@ D3 方向在 2026-10-29 被用户二次纠正：**不做 Library/管理台，管
 
 | 阶段 | 缺口 |
 |---|---|
-| 发布 | `0.2.1` 尚未 `npm publish`（2FA）；本地提交未 push |
+| 发布 | `0.2.2` 尚未 `npm publish`（需重新登录 npm 账号） |
 | D3.1 设置页完善 | 已归档列表分页/workspace 筛选、临时删除的 undo toast（替代原生 confirm）、设置分区图标（DSH 只对内置 id 映射图标）、live 会话/句柄删除的兼容性 |
 | D3.2 组织与生命周期 | CLI 回收站保留期审计与过期提示、行菜单删除的 toast/撤销体验（当前原生 confirm） |
 | D3.3 增强 | 设置页内的搜索/筛选状态记忆、CLI 恢复入口文档化、i18n 补全（设置页两分区已中英） |

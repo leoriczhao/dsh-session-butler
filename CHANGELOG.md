@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **live 验证（2026-10-29 18:09，live 3080，Client 半热加载）**：设置左栏出现 Archived chats/Trash/Threadloom；已归档 7 条按项目分组、Trash 2 条、配置 5 字段；行菜单只剩官方项 + Move to trash…。证据：`docs/evidence/live-settings-nav.png`、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live-settings-threadloom.png`、`live-row-menu.png`。
 - **测试**：客户端测试重写为 6 个用例（注册表/延迟绑定/释放顺序/设置页 SSR/行菜单开关），npm run verify 62 tests + 57 package checks + 75 files tarball 全绿。
 
-## [Unreleased]
+## [0.2.2] — 2026-11-06
 
 ### Added — 宿主协调的空闲会话删除（2026-11-06）
 
