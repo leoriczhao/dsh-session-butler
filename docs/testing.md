@@ -2,7 +2,7 @@
 
 会话管家的验证分三层：第一层是每次提交的默认门禁（`pnpm run verify`），第二、三层在 CI 的独立 `e2e` job 中运行；两层 E2E 都使用真实 `dsh web` 进程，不伪造 Cordis Context。
 
-## 1. 单元与契约测试（71 个）
+## 1. 单元与契约测试（67 个）
 
 ```bash
 pnpm test          # node:test，tests/*.test.mjs

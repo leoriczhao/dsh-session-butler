@@ -40,7 +40,6 @@ dsh plugin --profile web add /path/to/dsh-session-butler
 | 设置 → **已归档的聊天** | 看已归档会话，按项目分组、搜索；取消归档；永久删除；全部删除 |
 | 设置 → **会话管家** | 插件配置，改完立即生效 |
 | 会话行 `...` → **删除会话** | 确认后永久删除该会话 |
-| 命令 `/session-butler` | `list` / `trash` / `restore` / `purge`，给 CLI 和脚本用 |
 
 ## 删除是怎么做的
 
@@ -73,7 +72,7 @@ dsh plugin --profile web add /path/to/dsh-session-butler
 
 ```sh
 pnpm install
-pnpm run verify       # typecheck + build + 71 个单元测试 + npm pack 契约
+pnpm run verify       # typecheck + build + 67 个单元测试 + npm pack 契约
 pnpm run test:e2e     # 真实 dsh web 组合 + Playwright 浏览器
 ```
 

@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — 移除 /session-butler 命令
+
+- composer 命令面板只给内置命令配图标，`CommandDefinition` 没有 icon 字段，第三方命令会显示成一行没有图标的条目；按用户意见直接移除该命令及其端口类型、注册与测试。
+- 删除只保留 GUI 入口；Host 内部的移动 + purge 管线不变，`trashRetentionDays` 继续用于回收站条目的过期标记。
+
 ### Changed — 改名：会话管家（Session Butler）
 
 - 产品显示名由 Threadloom 改为 **会话管家 / Session Butler**，与包名 `dsh-session-butler` 对应；README、文档、界面文案、locale 元数据、图标 aria-label、LICENSE 同步更新。

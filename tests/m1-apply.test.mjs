@@ -144,7 +144,7 @@ test('apply wires the caller Workspace into session_butler_new', async () => {
   }
 })
 
-test('apply exposes the trash service and registers /session-butler', async () => {
+test('apply exposes the trash service and mounts the HTTP bridge', async () => {
   const home = await mkdtemp(path.join(tmpdir(), 'butler-apply-'))
   try {
     await mkdir(path.join(home, 'sessions', '--proj--', 'session-a'), { recursive: true })
@@ -156,23 +156,13 @@ test('apply exposes the trash service and registers /session-butler', async () =
 
     const service = fake.provided.get('sessionButler')
     assert.ok(service instanceof SessionButlerService)
-    // One effect each for the command, the HTTP bridge, and the read-only tools.
-    assert.equal(fake.effects.length, 3)
-    assert.equal(fake.commands.length, 1)
-    assert.equal(fake.commands[0].name, 'session-butler')
+    // One effect each for the HTTP bridge and the read-only tools.
+    assert.equal(fake.effects.length, 2)
     assert.deepEqual(fake.injections, [['webServer', 'connection'], ['tools'], ['tools', 'sessionController']])
     assert.deepEqual(fake.tools.map(tool => tool.name), ['session_butler_list', 'session_butler_detail'])
     assert.equal(fake.routes.length, 1)
     assert.equal(fake.routes[0].path, '/session-butler/api')
     assert.equal(fake.routes[0].kind, 'prefix')
-
-    const listed = await fake.commands[0].handler({ rawInput: 'list', agent: { session: { id: 'session-current' } } })
-    assert.equal(listed.kind, 'success')
-    assert.match(listed.text, /empty/)
-
-    const trashed = await fake.commands[0].handler({ rawInput: 'trash session-a', agent: { session: { id: 'session-current' } } })
-    assert.equal(trashed.kind, 'success', trashed.text)
-    assert.match(trashed.text, /session-a/)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

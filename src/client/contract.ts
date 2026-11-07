@@ -74,7 +74,6 @@ export interface BridgeStatus {
     readonly workspaceRegistry: boolean
     readonly sessionController: boolean
     readonly tools: boolean
-    readonly commands: boolean
   }
   readonly counts?: {
     readonly sessions: number

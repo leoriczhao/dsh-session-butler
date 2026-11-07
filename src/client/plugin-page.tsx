@@ -139,7 +139,6 @@ function HealthBlock({ health, error, loading, t, onRefresh }: {
                 workspace: health.backends.workspaceRegistry ? t('plugin.health.yes') : t('plugin.health.no'),
                 controller: health.backends.sessionController ? t('plugin.health.yes') : t('plugin.health.no'),
                 tools: health.backends.tools ? t('plugin.health.yes') : t('plugin.health.no'),
-                commands: health.backends.commands ? t('plugin.health.yes') : t('plugin.health.no'),
               })}
             </p>
           ) : null}

@@ -163,29 +163,6 @@ export interface WorkspaceDescriptorLike {
   readonly sessionIds?: readonly string[]
 }
 
-/** One `/session-butler` command result (rc.2 `CommandResult`). */
-export type ButlerCommandResult =
-  | { readonly kind: 'success'; readonly text?: string }
-  | { readonly kind: 'error'; readonly text: string }
-
-/** Invocation subset the command handler consumes (rc.2 `CommandInvocation`). */
-export interface ButlerCommandInvocation {
-  readonly rawInput: string
-  readonly agent?: { readonly session?: { readonly id?: string } }
-}
-
-/** One human command definition (rc.2 `CommandDefinition`). */
-export interface ButlerCommandDefinition {
-  readonly name: string
-  readonly description: string
-  readonly handler: (invocation: ButlerCommandInvocation) => ButlerCommandResult | Promise<ButlerCommandResult>
-}
-
-/** The `commands` registry subset the plugin consumes. */
-export interface CommandsPort {
-  register(definition: ButlerCommandDefinition): () => void
-}
-
 /** One Host HTTP route (rc.2 `dsh-host-webserver` WebRoute, node:http handler). */
 export interface HostWebRoute {
   readonly kind: 'exact' | 'prefix'

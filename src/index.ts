@@ -1,9 +1,8 @@
 /**
  * The plugin — a session-management bundle for DeepSeek Harness.
  *
- * Host half. M1 provides the trash-first delete core as a Host service plus the
- * `/session-butler` human command. M2 adds the Web management page and its HTTP
- * bridge; M3 adds agent tools.
+ * Host half: the trash-first delete core as a Host service, the same-origin HTTP
+ * bridge used by the Web client, and the agent tools.
  *
  * Every registration happens inside `apply` through `ctx.effect`/`ctx.on` and
  * returns its cleanup. Optional services are probed with `ctx.get` instead of
@@ -17,14 +16,12 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import { Config, readConfigValue, type ButlerConfig } from './config.js'
 import { mountBridge } from './host/bridge.js'
-import { createButlerCommand } from './host/command.js'
 import type {
   AgentsPort,
   ButlerHostContext,
   ButlerToolCapabilities,
   ButlerSessionCreation,
   ButlerSessionForking,
-  CommandsPort,
   SessionPersistencePort,
   SessionQueryPort,
   SessionsPort,
@@ -138,7 +135,6 @@ export function apply(ctx: Context, config: ButlerConfig): void {
       workspaceRegistry: host.get<WorkspaceRegistryPort>('workspaceRegistry') !== undefined,
       sessionController: host.get<ButlerSessionCreation>('sessionController') !== undefined,
       tools: host.get<ToolsPort>('tools') !== undefined,
-      commands: host.get<CommandsPort>('commands') !== undefined,
     }),
     // Getters keep late-mounted services visible without delaying this plugin's
     // activation (the Web profile mounts some of them after the bundle rows).
@@ -151,8 +147,8 @@ export function apply(ctx: Context, config: ButlerConfig): void {
 
 
   // The bridge needs webServer + connection, which headless / ACP compositions
-  // never provide. Inject them optionally so the command surface still mounts
-  // everywhere, and the HTTP bridge appears exactly when a Web app is present.
+  // never provide. Inject them optionally so the HTTP bridge appears exactly
+  // when a Web app is present.
   if (typeof host.inject === 'function') {
     host.inject(['webServer', 'connection'], scope => mountBridge(scope, service))
     host.inject(['tools'], (scope) => {
@@ -181,8 +177,4 @@ export function apply(ctx: Context, config: ButlerConfig): void {
     }
   }
 
-  const commands = host.get<CommandsPort>('commands')
-  if (commands !== undefined) {
-    host.effect(() => commands.register(createButlerCommand(service)), 'session-butler: command')
-  }
 }

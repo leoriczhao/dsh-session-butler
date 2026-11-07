@@ -10,7 +10,6 @@
 - **设置 → 会话管家**：插件配置（级联、删除等待、行菜单开关等 4 个字段），保存即生效；
 - **会话行 "..." 菜单 → 删除会话**：侧栏会话的快捷永久删除（带确认，可配置关闭）；
 - **Agent 工具**：`session_butler_list` / `session_butler_detail` / `session_butler_new` / `session_butler_fork`（删除等破坏性写操作不进入工具面，D-003/D-015）；
-- **命令**：`/session-butler list|trash|restore|purge`（CLI 保留内部回收站作为高级恢复手段）。
 - **没有用户可见的回收站页面**：删除确认后立即执行，不再要求去第二个页面二次删除（D-030）。
 
 > **版本状态（0.2.2，已发布到 npm）**：0.1.x 完成 Host 删除核心、命令、agent 工具与真实浏览器验证；0.2.0（D-029）移除会话库面板/插件页配置，改为设置页入口；0.2.1（D-030）按用户三次纠正移除回收站页面，删除改为一步永久删除；0.2.2 由配套宿主释放空闲句柄并用后端原生删除事务完成删除。真实浏览器交互、隔离 `DSH_HOME` 的 trash→restore 闭环、`npm pack` 干净安装与 registry 已安装验证均在 0.1.x 完成；仍被加载的会话会被拒绝并提示处理方式；其余会话即时删除。npm：<https://www.npmjs.com/package/dsh-session-butler>；源码：<https://github.com/leoriczhao/dsh-session-butler>。
@@ -83,22 +82,6 @@ dsh plugin --profile <profile> remove dsh-session-butler
 
 - `list`/`detail` 只读；`new`/`fork` 只创建新的平级会话，不复制或删除旧会话；它们只在组合提供 `sessionController` 时出现（Web profile 有，headless/ACP 可能没有），且永远只操作调用方自己的会话。
 - 工具输出同时带 JSON 值（供脚本化使用）与经过裁剪的文本渲染（供人读）；详情后代过多时文本会注明截断。
-
-## 命令（M1）
-
-在任意会话的 composer 中输入：
-
-```
-/session-butler list
-/session-butler trash <session-id> [--cascade|--no-cascade]
-/session-butler restore <session-id>
-/session-butler purge <session-id> <session-id>
-```
-
-- `list`：列出回收站条目（删除时间、保留期是否已到、级联来源）。
-- `trash`：预检通过后移入回收站；仍被加载的会话会等待宿主释放，超时则拒绝，不主动停止或归档；迁移中会话会被拒绝；默认级联子代理会话（fork 永不级联）。
-- `restore`：移回原目录；原路径已被占用时拒绝。
-- `purge`：CLI 高级恢复路径上的永久删除，需要配置 `permanentDelete: confirm` 且第二次输入完整 session id；GUI 不使用该命令，删除走 bridge `delete`。
 
 ## 安全边界
 

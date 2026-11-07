@@ -40,7 +40,7 @@
 - **理由**：在无官方 API 的前提下，回收站优先把不可逆操作降到最低；租约探测避免删除其他进程正在写的会话；`kind === 'jsonl'` 判断让存储在重构后安全失败而不是误删。
 - **影响**：插件需要文件系统能力（`node:fs` / `dshHomePath`），需要有 fixture 测试；存储重构时可能失效（有稳定错误码兜底）。
 - **实现备注（M1）**：回收站使用**镜像 sessions 树的目录布局 + 每会话 sidecar JSON 元数据**（原子 temp+rename 写入），暂不引入 `storageDomain`：它要求 zod schema 与额外的运行时依赖，而回收站元数据只由本插件读写；M2 若需要跨进程变更通知/查询再评估迁移到 domain。
-- **2026-10-30 三次纠正（D-030 取代用户可见部分）**：用户要求删除即删除；GUI 不再提供回收站页面，删除确认后直接 purge。回收站机制保留为 Host 内部安全管线与 CLI（`/session-butler trash|restore|purge`）的高级恢复能力，不再作为用户流程中的一步。
+- **2026-10-30 三次纠正（D-030 取代用户可见部分）**：用户要求删除即删除；GUI 不再提供回收站页面，删除确认后直接 purge。回收站机制保留为 Host 内部安全管线（移动 + 立即 purge，失败时条目留在回收站供人工检查），不再作为用户流程中的一步；其命令面已于 D-034 移除。
 
 ### D-004 级联只沿 `origin === 'subagent'`，fork 永不级联 · accepted
 
@@ -116,7 +116,7 @@
 ### D-017 Host 服务的可选注入与延迟绑定 · accepted
 
 - **背景**：Web profile 中 `webServer`/`connection`/`workspaceRegistry` 可能在插件 `apply` 之后才挂载；headless/ACP 则永远没有它们。
-- **决策**：桥用 `ctx.inject(['webServer','connection'], ...)` 可选注入；`sessions`/`agents`/`workspaceRegistry` 通过 `() => ctx.get(...)` 在操作时延迟取值；命令面不依赖这些可选服务，headless 仍可 `/session-butler`。
+- **决策**：桥用 `ctx.inject(['webServer','connection'], ...)` 可选注入；`sessions`/`agents`/`workspaceRegistry` 通过 `() => ctx.get(...)` 在操作时延迟取值；命令面已按 D-034 移除，桥与工具都不依赖这些可选服务。
 - **影响**：`workspaceAvailable` 变成运行时能力探测（M2 实测从 false 修正为 true）；删除运行中会话在无 workspace 组合继续按 D-013 拒绝。
 
 ### D-018 agent 工具：结构化注册 + 只读边界 · accepted
@@ -203,7 +203,7 @@
   - **移除用户可见回收站**：不再注册 `session-butler-trash` 设置分区，删除 `ButlerTrashSection`；设置页只剩「已归档的聊天」（order 44）与「会话管家」（order 45）。
   - **一步永久删除**：已归档页的「永久删除」/「全部删除」与行菜单的「删除聊天…」直接调用新 bridge `delete` / `delete-many`；Host 先走既有 trash 管线（跨进程租约、运行中停止、同盘 rename），随后立即 purge，成功后回收站不残留记录。确认对话框明确「永久删除，无法恢复」。
   - **UI 删除不再受 `permanentDelete` 配置门禁**：显式确认即授权；字段保留在 schema 与 CLI 的 `purge` 命令（兼容已有 profile patch），不在设置表单展示。
-  - **安全网留在实现/CLI 层**：`/session-butler trash|restore|purge` 命令与 Host 测试仍保留；若 purge 中途失败，记录仍在回收站，可用 CLI 恢复，但 GUI 不再提供回收站页面。
+  - **安全网留在实现层**：trash/restore 仍由 Host 服务与测试覆盖；若 purge 中途失败，记录仍在回收站等待人工处理，但 GUI 与命令面都不再暴露它。
   - 行菜单 id 由 `session-butler.trash` 改为 `session-butler.delete`，文案改为「删除聊天…」。
 - **理由**：用户流程只能有一个删除动作；安全网应藏在实现层，而不是要求用户再操作一次。归档与删除是两种状态，不能展示成两个并行的删除列表。
 - **影响**：D-003 的「插件侧回收站优先」从用户可见功能降级为内部实现/CLI 能力；D-029 的回收站页与行菜单动作被取代；`permanentDelete` 默认值不再影响 GUI；Host 新增 `delete`/`delete-many`；版本 **0.2.1**。
@@ -237,3 +237,9 @@
 - **边界**：拒绝路径不停止活动、不归档、不改动文件；写租约探测发现其他写入者时同样拒绝。会话日志格式不变，不引入宿主 API。
 - **已废弃**：先实现过的两个方案（宿主侧所有者释放 + 后端删除事务；插件侧移出目录后删文件）都因「不修改宿主」「不做暴力删除」而移除。
 - **验证**：单测覆盖拒绝时零副作用（不 archive/unpin/移动/打开）、运行中与已加载的分类、列表与归档/置顶状态保持；L2 在真实 Host 中加载会话后删除，断言提示可执行、行与目录保留，重启隔离宿主后可正常删除且无回收站残留。
+
+### D-034 移除 /session-butler 命令 · accepted（用户 2026-11-08：「这里少了个图标，或者直接去掉也行」）
+
+- **背景**：DSH 的 composer 命令面板给内置命令配图标（客户端按内置命令名映射），而 `CommandDefinition` 没有 icon 字段，第三方命令在面板里永远是一行没有图标的条目，和上下行不对齐。
+- **决策**：直接移除 `/session-butler` 命令（list/trash/restore/purge），连同命令相关的端口类型、注册与测试。删除功能只保留 GUI 两个入口；Host 内部的移动 + purge 管线不变。
+- **影响**：`trashRetentionDays` 仍用于内部回收站条目的过期标记；`restore`/`listTrash` 保留为服务能力与测试覆盖，但不再有用户入口。命令面若将来需要，必须等宿主为第三方命令提供图标，或以客户端 `CommandContribution` 的形式重做。

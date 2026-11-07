@@ -24,7 +24,7 @@ export const EN: Readonly<Record<string, string>> = {
   'plugin.health.version': 'Version {version}',
   'plugin.health.counts': '{sessions} session(s) · {trashed} trashed · {live} live',
   'plugin.health.storage': 'Trash writable: {trash} · sessions writable: {sessions}',
-  'plugin.health.backends': 'Backends: workspace {workspace} · controller {controller} · tools {tools} · commands {commands}',
+  'plugin.health.backends': 'Backends: workspace {workspace} · controller {controller} · tools {tools}',
   'plugin.health.errors': 'Recent errors ({count})',
   'plugin.health.noErrors': 'No recent errors.',
   'plugin.health.yes': 'yes',

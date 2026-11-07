@@ -36,7 +36,6 @@ test('the packed plugin composes into a real dsh web profile', { timeout: 120_00
     assert.equal(value.backends.workspaceRegistry, true)
     assert.equal(value.backends.sessionQuery, true)
     assert.equal(value.backends.tools, true)
-    assert.equal(value.backends.commands, true)
   } finally {
     await server?.stop()
     await fixture.cleanup()

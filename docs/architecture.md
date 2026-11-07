@@ -9,7 +9,7 @@
 
 ## Host 半
 
-`apply` 先构造 `SessionButlerService` 并 `provide('sessionButler')`，再按宿主实际存在的服务挂载各表面：`webServer` + `connection` 在才挂 HTTP bridge；`tools` 在才注册工具；`commands` 在才注册 `/session-butler`。可选服务一律用 `ctx.get` 探测，缺了就降级，不阻塞插件加载。
+`apply` 先构造 `SessionButlerService` 并 `provide('sessionButler')`，再按宿主实际存在的服务挂载各表面：`webServer` + `connection` 在才挂 HTTP bridge；`tools` 在才注册工具。可选服务一律用 `ctx.get` 探测，缺了就降级，不阻塞插件加载。
 
 | 模块 | 职责 |
 |---|---|
@@ -20,7 +20,6 @@
 | `trash-store.ts` | 回收站：元数据 + payload 目录、同盘移动、冲突检查、恢复、清除 |
 | `read-model.ts` | 把 header、live 状态、归档/置顶、标题、事件统计拼成 list/detail 投影 |
 | `bridge.ts` | `/session-butler/api/*` 前缀路由，同源 POST 信封 |
-| `command.ts` | `/session-butler list\|trash\|restore\|purge` |
 | `tools.ts` | 四个 agent 工具：list / detail / new / fork |
 | `schema.ts` | 配置与请求体校验 |
 | `fs.ts` | 存在性检查、目录移动、原子写 JSON、受控删除 |
