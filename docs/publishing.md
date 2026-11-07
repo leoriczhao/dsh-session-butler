@@ -165,7 +165,7 @@ git tag v<version> && git push origin v<version>
 本机发布需要账号 2FA；CI 发布不需要人工输入动态码。推送与 `package.json` 版本一致的 tag 即触发 `.github/workflows/release.yml`：
 
 ```bash
-git tag v0.2.2 && git push origin v0.2.2
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
 两种凭据方式，二选一：
