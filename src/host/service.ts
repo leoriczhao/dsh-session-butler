@@ -1,5 +1,5 @@
 /**
- * Threadloom's Host-side session management service (M1: trash core).
+ * the plugin's Host-side session management service (M1: trash core).
  *
  * The pipeline is deliberately preflight-first: every check that can fail
  * (running work, migration state, write lease, on-disk location, occupied trash
@@ -275,7 +275,7 @@ function releaseObservation(observation: SessionObservationLike): void {
   }
 }
 
-/** Map `sessionQuery` failures onto stable Threadloom codes. */
+/** Map `sessionQuery` failures onto stable the plugin codes. */
 function queryFailure(error: unknown, context: string): ButlerError {
   const code = (error as { code?: unknown } | undefined)?.code
   if (code === 'SESSION_QUERY_SESSION_NOT_FOUND') {

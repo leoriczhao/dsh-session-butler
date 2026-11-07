@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs'
 
-/** Installed Threadloom version, or `unknown` when the package metadata is unreadable. */
+/** Installed the plugin version, or `unknown` when the package metadata is unreadable. */
 export const PLUGIN_VERSION: string = (() => {
   try {
     const parsed: unknown = JSON.parse(

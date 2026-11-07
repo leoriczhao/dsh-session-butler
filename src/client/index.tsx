@@ -1,11 +1,11 @@
 /**
- * Threadloom — Client half (D-029: settings-only chat management).
+ * The plugin — Client half (D-029: settings-only chat management).
  *
  * The plugin no longer owns a session-library page or a navigation button.
  * Everything lives where Codex puts it:
  *   - Settings → Archived chats (list / search / unarchive / delete)
  *   - Settings → Trash (recoverable deletions)
- *   - Settings → Threadloom (the plugin's configuration form)
+ *   - Settings → Session Butler (the plugin's configuration form)
  * plus one session-row menu action ("Delete session") and the plugin-page
  * health badge/diagnostics. Every contribution degrades silently when the
  * host does not declare its slot.
@@ -22,21 +22,21 @@ import type {
   SlotRegistrationLike,
 } from './contract.js'
 import { EN, NS, ZH } from './locale.js'
-import { ThreadloomDeleteMenuItem } from './menu.js'
+import { ButlerDeleteMenuItem } from './menu.js'
 import type { DeleteMenuItemProps } from './menu.js'
-import { ThreadloomDetailBadge, ThreadloomDetailSection } from './plugin-page.js'
-import { ThreadloomArchivedSection, ThreadloomConfigSection } from './settings.js'
+import { ButlerDetailBadge, ButlerDetailSection } from './plugin-page.js'
+import { ButlerArchivedSection, ButlerConfigSection } from './settings.js'
 import type { SectionActions } from './settings.js'
 
 // Exported for the client tests; the browser module table itself only uses
 // `apply` and `inject`.
-export { ThreadloomArchivedSection, ThreadloomConfigSection } from './settings.js'
-export { ThreadloomDeleteMenuItem } from './menu.js'
+export { ButlerArchivedSection, ButlerConfigSection } from './settings.js'
+export { ButlerDeleteMenuItem } from './menu.js'
 
 /** Client services this half needs. */
 export const inject: string[] = ['slots', 'locale', 'uiWorkspace', 'sessions']
 
-/** Mount the Threadloom Client half. */
+/** Mount the plugin's Client half. */
 export function apply(ctx: ClientContextLike): void {
   try {
     applyInner(ctx)
@@ -94,8 +94,8 @@ function applyInner(ctx: ClientContextLike): void {
       }
 
       const sections: readonly SettingsSectionSpec[] = [
-        { id: 'archived-sessions', order: 44, labelKey: 'settings.archived', component: ThreadloomArchivedSection },
-        { id: 'threadloom', order: 45, labelKey: 'settings.config', component: ThreadloomConfigSection },
+        { id: 'archived-sessions', order: 44, labelKey: 'settings.archived', component: ButlerArchivedSection },
+        { id: 'session-butler', order: 45, labelKey: 'settings.config', component: ButlerConfigSection },
       ]
       for (const section of sections) {
         disposers.push(ctx.slots.inject('settings.section', () => ctx.slots.register(
@@ -112,8 +112,8 @@ function applyInner(ctx: ClientContextLike): void {
 
       // Row menu: the one action the official menu does not own.
       disposers.push(ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register(
-        { name: 'sidebar.workspaces.session.menu.item', id: 'threadloom.delete', order: 470, locale: NS },
-        ((props: unknown) => ThreadloomDeleteMenuItem({
+        { name: 'sidebar.workspaces.session.menu.item', id: 'session-butler.delete', order: 470, locale: NS },
+        ((props: unknown) => ButlerDeleteMenuItem({
           ...(props as DeleteMenuItemProps),
           t,
           refreshSessions,
@@ -129,13 +129,13 @@ function applyInner(ctx: ClientContextLike): void {
       }> = [
         {
           name: 'plugins.detail.badge',
-          options: { name: 'plugins.detail.badge', id: 'threadloom-health', locale: NS },
-          component: ThreadloomDetailBadge as unknown as (props: never) => unknown,
+          options: { name: 'plugins.detail.badge', id: 'session-butler-health', locale: NS },
+          component: ButlerDetailBadge as unknown as (props: never) => unknown,
         },
         {
           name: 'plugins.detail.section',
-          options: { name: 'plugins.detail.section', id: 'threadloom-diagnostics', locale: NS },
-          component: ThreadloomDetailSection as unknown as (props: never) => unknown,
+          options: { name: 'plugins.detail.section', id: 'session-butler-diagnostics', locale: NS },
+          component: ButlerDetailSection as unknown as (props: never) => unknown,
         },
       ]
       for (const slot of pluginsPageSlots) {

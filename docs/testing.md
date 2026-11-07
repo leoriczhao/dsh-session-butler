@@ -1,6 +1,6 @@
 # 测试与验证
 
-Threadloom 的验证分三层：第一层是每次提交的默认门禁（`pnpm run verify`），第二、三层在 CI 的独立 `e2e` job 中运行；两层 E2E 都使用真实 `dsh web` 进程，不伪造 Cordis Context。
+会话管家的验证分三层：第一层是每次提交的默认门禁（`pnpm run verify`），第二、三层在 CI 的独立 `e2e` job 中运行；两层 E2E 都使用真实 `dsh web` 进程，不伪造 Cordis Context。
 
 ## 1. 单元与契约测试（71 个）
 
@@ -37,8 +37,8 @@ pnpm run verify    # typecheck + clean + build + test + npm pack 契约校验
 
 在同一临时 profile 基础上预置两个 **idle 且非空白** 的已持久化会话（按 Host 的 JSONL v4 格式写入临时 `sessions/`，因此无需模型 Provider、不会产生正在运行的 turn），然后用 Playwright Chromium 打开真实 GUI：
 
-- 打开账号菜单 → Settings，断言左栏包含 **Archived chats** 与 **Threadloom**，且没有 Trash / 回收站或会话库入口；
-- 打开两个设置分区，检查 Archived chats 页面可渲染，Threadloom 设置页出现两个数字配置输入；
+- 打开账号菜单 → Settings，断言左栏包含 **Archived chats** 与 **会话管家**，且没有 Trash / 回收站或会话库入口；
+- 打开两个设置分区，检查 Archived chats 页面可渲染，会话管家设置页出现两个数字配置输入；
 - 两个 workspace 的会话行都出现在侧栏；
 - 模拟桥返回 `session-running`、`session-in-use`、`session-locked` 和网络中断，验证关闭行菜单后仍会弹出对应提示；再通过临时存储冲突触发真实 Host 错误；
 - 用宿主的重命名操作加载一个已完成的会话，再从行菜单删除：断言被拒绝、提示先停止或安全重启、行与会话目录都保留；随后重启隔离宿主，再次删除成功且 `trashCount === 0`；

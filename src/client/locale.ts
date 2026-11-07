@@ -8,15 +8,15 @@
  * @module dsh-session-butler/client/locale
  */
 
-/** Locale namespace owned by Threadloom's Web half. */
+/** Locale namespace owned by the plugin's Web half. */
 export const NS = 'session-butler'
 
 /** English dictionary (complete key set drives the other dictionaries). */
 export const EN: Readonly<Record<string, string>> = {
   loading: 'Loading…',
-  'plugin.health.title': 'Threadloom health',
+  'plugin.health.title': 'Session Butler health',
   'plugin.health.refresh': 'Refresh',
-  'plugin.health.loading': 'Checking Threadloom health…',
+  'plugin.health.loading': 'Checking Session Butler health…',
   'plugin.health.failed': 'Health check failed: {message}',
   'plugin.health.ok': 'Healthy',
   'plugin.health.degraded': 'Limited',
@@ -29,9 +29,9 @@ export const EN: Readonly<Record<string, string>> = {
   'plugin.health.noErrors': 'No recent errors.',
   'plugin.health.yes': 'yes',
   'plugin.health.no': 'no',
-  'plugin.diagnostics.title': 'Threadloom diagnostics',
+  'plugin.diagnostics.title': 'Session Butler diagnostics',
   'plugin.diagnostics.hint': 'Functional health reported by the plugin itself; the row status above only covers the plugin fiber.',
-  'plugin.config.title': 'Threadloom settings',
+  'plugin.config.title': 'Session Butler settings',
   'plugin.config.unavailable': 'The settings form is unavailable in this composition; edit the plugin row in the profile patch instead.',
   'plugin.config.readonly': 'This document is read-only.',
   'plugin.config.saved': 'Saved.',
@@ -42,7 +42,7 @@ export const EN: Readonly<Record<string, string>> = {
   'plugin.config.inlineMenu': 'Session row menu actions',
   'plugin.config.summary': 'Configure deletion waits, cascade behaviour and the session-row action.',
   'settings.archived': 'Archived chats',
-  'settings.config': 'Threadloom',
+  'settings.config': 'Session Butler',
   'archived.title': 'Archived chats',
   'archived.subtitle': 'Chats removed from the sidebar. Unarchive them, or delete them permanently.',
   'archived.search': 'Search archived chats',
@@ -75,9 +75,9 @@ export const EN: Readonly<Record<string, string>> = {
 /** Chinese dictionary (must cover every English key). */
 export const ZH: Readonly<Record<string, string>> = {
   loading: '加载中…',
-  'plugin.health.title': 'Threadloom 健康状态',
+  'plugin.health.title': '会话管家健康状态',
   'plugin.health.refresh': '刷新',
-  'plugin.health.loading': '正在检查 Threadloom 健康状态…',
+  'plugin.health.loading': '正在检查会话管家健康状态…',
   'plugin.health.failed': '健康检查失败：{message}',
   'plugin.health.ok': '正常',
   'plugin.health.degraded': '受限',
@@ -90,9 +90,9 @@ export const ZH: Readonly<Record<string, string>> = {
   'plugin.health.noErrors': '没有最近错误。',
   'plugin.health.yes': '是',
   'plugin.health.no': '否',
-  'plugin.diagnostics.title': 'Threadloom 诊断',
+  'plugin.diagnostics.title': '会话管家诊断',
   'plugin.diagnostics.hint': '这些是插件自报的功能级健康；上方行状态只反映插件 fiber。',
-  'plugin.config.title': 'Threadloom 设置',
+  'plugin.config.title': '会话管家设置',
   'plugin.config.unavailable': '当前组合没有设置表单；请改为编辑 profile patch 中的插件行。',
   'plugin.config.readonly': '当前文档只读。',
   'plugin.config.saved': '已保存。',
@@ -103,7 +103,7 @@ export const ZH: Readonly<Record<string, string>> = {
   'plugin.config.inlineMenu': '会话行菜单动作',
   'plugin.config.summary': '配置删除等待、级联行为与会话行菜单动作。',
   'settings.archived': '已归档的聊天',
-  'settings.config': 'Threadloom',
+  'settings.config': '会话管家',
   'archived.title': '已归档的聊天',
   'archived.subtitle': '从侧栏移出的聊天。可以取消归档，或永久删除。',
   'archived.search': '搜索已归档的聊天',

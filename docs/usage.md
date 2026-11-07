@@ -1,13 +1,13 @@
-# Threadloom 使用说明
+# 会话管家使用说明
 
 > 本文件是 DSH 插件详情页的长文（`locale/*.json` 的 `meta.detail` 指向它），也会随 npm 包发布。
 
 ## 这是什么
 
-**Threadloom（`dsh-session-butler`）** 是 DeepSeek Harness 的会话管理插件。按 Codex 桌面端（合并后的 ChatGPT/Codex）的形态，它把管理动作放进**设置页**，删除**确认后一步完成**：
+**会话管家（`dsh-session-butler`）** 是 DeepSeek Harness 的会话管理插件。按 Codex 桌面端（合并后的 ChatGPT/Codex）的形态，它把管理动作放进**设置页**，删除**确认后一步完成**：
 
 - **设置 → 已归档的聊天**：列出从侧栏归档的会话，支持搜索、按项目分组、**取消归档**、**永久删除**、**全部删除**（与 ChatGPT 桌面端「设置 → 已归档的聊天」一致）；
-- **设置 → Threadloom**：插件配置（级联、删除等待、行菜单开关等 4 个字段），保存即生效；
+- **设置 → 会话管家**：插件配置（级联、删除等待、行菜单开关等 4 个字段），保存即生效；
 - **会话行 "..." 菜单 → 删除会话**：侧栏会话的快捷永久删除（带确认，可配置关闭）；
 - **Agent 工具**：`session_butler_list` / `session_butler_detail` / `session_butler_new` / `session_butler_fork`（删除等破坏性写操作不进入工具面，D-003/D-015）；
 - **命令**：`/session-butler list|trash|restore|purge`（CLI 保留内部回收站作为高级恢复手段）。
@@ -38,9 +38,9 @@ dsh plugin --profile <profile> remove dsh-session-butler
 | 入口 | 位置 | 动作 |
 |---|---|---|
 | 已归档的聊天 | **设置 → 已归档的聊天** | 搜索、按项目分组、取消归档、永久删除、全部删除 |
-| 插件配置 | **设置 → Threadloom** | 4 个字段，保存即写回 profile patch |
+| 插件配置 | **设置 → 会话管家** | 4 个字段，保存即写回 profile patch |
 | 删除侧栏会话 | 会话行 hover → "..." → **删除会话** | 确认后立即永久删除；`inlineMenuEnabled=false` 时隐藏 |
-| 插件健康 | 侧栏 **插件** → Threadloom → 详情 | 健康徽标 + 诊断区块 |
+| 插件健康 | 侧栏 **插件** → 会话管家 → 详情 | 健康徽标 + 诊断区块 |
 
 > 设置对话框的分区由 DSH 的 `settings.section` 扩展点提供（与 Claude Style / Dream 记忆等插件同级）；插件不再往插件页塞配置入口。
 
@@ -55,7 +55,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
 
 > 没有「设置 → 回收站」入口（D-030）。Host 仍在内部保留 trash 管线（跨进程租约、运行中停止、同盘移动）作为删除安全层；CLI 的 `trash`/`restore`/`purge` 命令继续可用，但 GUI 删除是一步完成的。
 
-## 配置（设置 → Threadloom）
+## 配置（设置 → 会话管家）
 
 字段（全部为 DSH volatile 配置，保存经 `configForms` 写回 profile patch，Host 在使用点读取，保存即生效）：
 

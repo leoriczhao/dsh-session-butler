@@ -1,11 +1,11 @@
 /**
- * Settings sections owned by Threadloom (D-029).
+ * Settings sections owned by the plugin (D-029).
  *
  * The Codex desktop reference exposes chat management in Settings, not as a
  * Settings sections: the archived-chats list (search, unarchive, delete,
- * plus the plugin's own trash and configuration pages. These components are
+ * plus the plugin's own configuration page. These components are
  * registered into the DSH settings shell's `settings.section` slot; the shell
- * owns the modal and the nav, so Threadloom renders only each page body.
+ * owns the modal and the nav, so the plugin renders only each page body.
  *
  * @module dsh-session-butler/client/settings
  */
@@ -149,7 +149,7 @@ function Notice({ text, error }: { readonly text: string | null; readonly error?
 }
 
 /** Settings § Archived chats: Codex's archived-chat list plus safe deletion. */
-export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
+export function ButlerArchivedSection(props: SectionActions): ReactElement {
   const { t, call, uiWorkspace, refreshSessions } = props
   const [rows, setRows] = useState<readonly ArchivedSessionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -355,8 +355,8 @@ export function ThreadloomArchivedSection(props: SectionActions): ReactElement {
 }
 
 
-/** Settings § Threadloom: the plugin's configuration form, once, in Settings. */
-export function ThreadloomConfigSection(props: SectionActions): ReactElement {
+/** Settings § Session Butler: the plugin's configuration form, once, in Settings. */
+export function ButlerConfigSection(props: SectionActions): ReactElement {
   const { t, configForm } = props
   const snapshot = useConfigSnapshot(configForm)
   return (

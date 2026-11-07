@@ -18,7 +18,7 @@
     "cordis",
     "session",
     "session-management",
-    "threadloom"
+    "session-butler"
   ],
   "engines": {
     "node": ">=24.9.0",

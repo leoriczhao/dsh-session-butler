@@ -1,5 +1,5 @@
 /**
- * Stable failure codes for Threadloom's Host operations.
+ * Stable failure codes for the plugin's Host operations.
  *
  * The codes cross process boundaries later (the Web bridge in M2), so they are
  * part of the contract: keep them short, stable and prefix-free here; the bridge
@@ -8,7 +8,7 @@
  * @module dsh-session-butler/shared/errors
  */
 
-/** One stable Threadloom failure code. */
+/** One stable plugin failure code. */
 export type ButlerErrorCode =
   | 'session-not-found'
   | 'session-running'
@@ -27,7 +27,7 @@ export type ButlerErrorCode =
   | 'invalid-request'
   | 'internal'
 
-/** A typed, caller-actionable failure raised by Threadloom's Host service. */
+/** A typed, caller-actionable failure raised by the plugin's Host service. */
 export class ButlerError extends Error {
   readonly code: ButlerErrorCode
   readonly details: Readonly<Record<string, unknown>>

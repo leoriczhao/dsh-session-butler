@@ -2,7 +2,7 @@
  * L2 browser lane: one Playwright walk over the real Web GUI, against a
  * disposable `dsh web` profile that loads the built plugin through the real
  * Loader. It covers the Codex-shaped surface: Settings has an Archived chats
- * section and a Threadloom section (no Trash page), a session row's inline
+ * section and a the plugin section (no Trash page), a session row's inline
  * action deletes permanently, and an archived chat can be deleted from Settings
  * with no trash residue afterwards.
  *
@@ -30,7 +30,7 @@ async function launchBrowser() {
   })
 }
 
-/** Call one Threadloom bridge method from inside the authenticated page. */
+/** Call one the plugin bridge method from inside the authenticated page. */
 async function bridge(page, method, body = {}) {
   return page.evaluate(async ({ method, body }) => {
     const response = await fetch(`session-butler/api/${method}`, {
@@ -310,11 +310,11 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
     await page.waitForTimeout(4_000)
     await installWelcomeAutoClose(page)
     await dismissWelcome(page)
-    // Settings: Codex-shaped archived chats and Threadloom config, no Trash page.
+    // Settings: Codex-shaped archived chats and the plugin config, no Trash page.
     const dialog = await openSettings(page)
     const nav = (await dialog.locator('nav button').allInnerTexts()).map(text => text.trim())
     assert.ok(nav.includes('Archived chats'), `settings nav is ${JSON.stringify(nav)}`)
-    assert.ok(nav.includes('Threadloom'), `settings nav is ${JSON.stringify(nav)}`)
+    assert.ok(nav.includes('Session Butler'), `settings nav is ${JSON.stringify(nav)}`)
     assert.ok(!nav.some(text => /Trash|回收站/.test(text)), `unexpected trash section: ${JSON.stringify(nav)}`)
     assert.ok(!nav.some(text => /Session library|会话库/.test(text)), `unexpected library section: ${JSON.stringify(nav)}`)
 
@@ -322,9 +322,9 @@ test('Settings and permanent deletion work in the assembled Web GUI', { timeout:
     await waitFor(async () => (await dialog.innerText()).includes('Archived chats'), {
       timeout: 10_000, label: 'archived chats page',
     })
-    await dialog.getByRole('button', { name: 'Threadloom' }).click()
-    await waitFor(async () => (await dialog.innerText()).includes('Threadloom settings'), {
-      timeout: 10_000, label: 'Threadloom settings page',
+    await dialog.getByRole('button', { name: 'Session Butler' }).click()
+    await waitFor(async () => (await dialog.innerText()).includes('Session Butler settings'), {
+      timeout: 10_000, label: 'Session Butler settings page',
     })
     assert.equal(await dialog.locator('input[type="number"]').count(), 2)
     await closeSettings(page)

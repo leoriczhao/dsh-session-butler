@@ -1,5 +1,5 @@
 /**
- * Pure projections from DSH session logs and lineage traces into Threadloom's
+ * Pure projections from DSH session logs and lineage traces into the plugin's
  * read model.
  *
  * The plugin deliberately derives turns, tool counts, token usage, and the

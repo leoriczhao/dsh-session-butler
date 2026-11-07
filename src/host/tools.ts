@@ -447,7 +447,7 @@ export function createNewSessionTool(create: ButlerSessionCreation): ButlerToolD
     name: 'session_butler_new',
     description:
       'Create a new empty DSH session in the caller\'s current working directory and inherit its agent preset. '
-      + 'The new session joins the caller\'s Workspace, appears in the Web sidebar and Threadloom list, '
+      + 'The new session joins the caller\'s Workspace, appears in the Web sidebar and the plugin list, '
       + 'and can be opened/continued by the user. Returns the new session id. This tool only creates a session; '
       + 'it never accepts arbitrary paths or session ids and performs no deletion.',
     parameters: compileParameterSchema({}),
@@ -513,7 +513,7 @@ export function createForkSessionTool(fork: ButlerSessionForking): ButlerToolDef
     description:
       'Branch the caller\'s current conversation into a new independent DSH session by copying events up to a completed turn. '
       + 'Defaults to the latest completed turn; pass atSeq to branch through one exact source event seq. '
-      + 'The new session appears in the Web sidebar and Threadloom list and can be opened/continued by the user. '
+      + 'The new session appears in the Web sidebar and the plugin list and can be opened/continued by the user. '
       + 'Returns the new session id. Only the caller\'s own session can be branched, and this tool never deletes anything.',
     parameters: compileParameterSchema({
       atSeq: {

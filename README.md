@@ -1,4 +1,4 @@
-# Threadloom
+# 会话管家 · dsh-session-butler
 
 [![npm](https://img.shields.io/npm/v/dsh-session-butler)](https://www.npmjs.com/package/dsh-session-butler)
 [![CI](https://github.com/leoriczhao/dsh-session-butler/actions/workflows/ci.yml/badge.svg)](https://github.com/leoriczhao/dsh-session-butler/actions/workflows/ci.yml)
@@ -6,7 +6,7 @@
 
 DeepSeek Harness 的会话管理插件：给已归档的会话一个列表，给会话行一个真正的删除。
 
-DSH 已经能改名、置顶、归档、分叉；归档之后没有地方查看，也没有删除入口。Threadloom 补上这两块：设置里多一个「已归档的聊天」分区，会话行多一项「删除会话」。
+DSH 已经能改名、置顶、归档、分叉；归档之后没有地方查看，也没有删除入口。会话管家补上这两块：设置里多一个「已归档的聊天」分区，会话行多一项「删除会话」。
 
 ![已归档的聊天](https://raw.githubusercontent.com/leoriczhao/dsh-session-butler/main/docs/evidence/live-settings-archived-0.2.1.png)
 
@@ -38,7 +38,7 @@ dsh plugin --profile web add /path/to/dsh-session-butler
 | 入口 | 做什么 |
 |---|---|
 | 设置 → **已归档的聊天** | 看已归档会话，按项目分组、搜索；取消归档；永久删除；全部删除 |
-| 设置 → **Threadloom** | 插件配置，改完立即生效 |
+| 设置 → **会话管家** | 插件配置，改完立即生效 |
 | 会话行 `...` → **删除会话** | 确认后永久删除该会话 |
 | 命令 `/session-butler` | `list` / `trash` / `restore` / `purge`，给 CLI 和脚本用 |
 
@@ -54,7 +54,7 @@ dsh plugin --profile web add /path/to/dsh-session-butler
 
 ## 配置
 
-设置 → Threadloom，四项：
+设置 → 会话管家，四项：
 
 | 字段 | 默认 | 说明 |
 |---|---|---|

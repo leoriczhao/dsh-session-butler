@@ -285,7 +285,7 @@ export async function authenticateWeb(url) {
   return { cookie, html: await page.text(), indexUrl: location.href }
 }
 
-/** POST one Threadloom bridge method with the captured browser cookie. */
+/** POST one the plugin bridge method with the captured browser cookie. */
 export async function callBridge(origin, cookie, method, body = {}) {
   const response = await fetch(`${origin}/session-butler/api/${method}`, {
     method: 'POST',

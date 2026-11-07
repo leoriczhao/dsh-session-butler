@@ -1,5 +1,5 @@
 /**
- * Threadloom — a session-management bundle for DeepSeek Harness.
+ * The plugin — a session-management bundle for DeepSeek Harness.
  *
  * Host half. M1 provides the trash-first delete core as a Host service plus the
  * `/session-butler` human command. M2 adds the Web management page and its HTTP
@@ -15,7 +15,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
-import { Config, readConfigValue, type ThreadloomConfig } from './config.js'
+import { Config, readConfigValue, type ButlerConfig } from './config.js'
 import { mountBridge } from './host/bridge.js'
 import { createButlerCommand } from './host/command.js'
 import type {
@@ -37,7 +37,7 @@ import { API_PREFIX, PLUGIN_ID, PLUGIN_ROW_ID } from './shared/identity.js'
 import { PLUGIN_VERSION } from './host/version.js'
 
 export { Config, PLUGIN_ID, PLUGIN_ROW_ID, API_PREFIX }
-export type { ThreadloomConfig }
+export type { ButlerConfig }
 export { SessionButlerService } from './host/service.js'
 export type {
   BatchItemResult,
@@ -110,8 +110,8 @@ function sessionToolCapabilities(host: ButlerHostContext): ButlerToolCapabilitie
   }
 }
 
-/** Mount the Threadloom Host half. */
-export function apply(ctx: Context, config: ThreadloomConfig): void {
+/** Mount the plugin's Host half. */
+export function apply(ctx: Context, config: ButlerConfig): void {
   const host = ctx as unknown as ButlerHostContext
   const homePath = host.get<(...segments: string[]) => string>('dshHomePath')
   const query = host.get<SessionQueryPort>('sessionQuery')

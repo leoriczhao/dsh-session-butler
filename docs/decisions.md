@@ -16,14 +16,14 @@
 ### D-001 范围重定位：不重做 DSH 已有能力 · accepted
 
 - **背景**：产品调研（早期调研）写于早期，假设 DSH 缺少改名/置顶/归档。经已发布包与 live service 核实：rename、pin/unpin、archive/unarchive、fork、export 均已有（Host Service + Web Remote + GUI）。fork 的 UI 入口有 3 个（会话页轮末「在新对话中分支」可按完成轮选 `atSeq`、侧栏行菜单、全局快捷键），剩余缺口是 **tool 面**与轮中截断/Esc Esc/`/side`——见 D-014/D-015。
-- **决策**：Threadloom 的 MVP 聚焦 **统一管理页（列表/检索/详情/批量）+ 删除/回收站 + 命令面**；已有能力通过官方 Remote/Host Service 复用，不重写状态机。
+- **决策**：会话管家的 MVP 聚焦 **统一管理页（列表/检索/详情/批量）+ 删除/回收站 + 命令面**；已有能力通过官方 Remote/Host Service 复用，不重写状态机。
 - **影响**：README、`docs/usage.md`、里程碑（M1–M3）按此重排；「归档 = 移动目录」的假设作废。
 
 ### D-002 包身份与发布渠道 · accepted
 
 - **背景**：用户选择。
 - **决策**：
-  - npm 包名 **`dsh-session-butler`**（unscoped，npm 上可用）；产品显示名 **Threadloom**（`locale/*.json` 的 `meta.title`）。
+  - npm 包名 **`dsh-session-butler`**（unscoped，npm 上可用）；产品显示名 **会话管家**（`locale/*.json` 的 `meta.title`）。
   - 发布到 **npmjs 公共 registry**；MIT 许可证；首版 `0.1.0`。
   - 兼容声明：顶层 `engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`（起初按 rc.3；后按 M1–M3 实际用到的 API 在 rc.2 发布包上逐项审计，全部存在，故降到 rc.2 以覆盖 npm `latest`）；**不写** `dsh.engines`。
 - **影响**：`package.json`、`cordis.patch.yml`（行 `name` 必须是裸包名）、构建产物中的模块 id、locale、文档统一使用该包名；GitHub 仓库地址待发布前补 `repository`/`homepage`/`bugs`。
@@ -51,7 +51,7 @@
 ### D-006 归档不改文件、不搬运 · accepted
 
 - **背景**：DSH 归档是逻辑标记（`archivedSessionIds`），文件原地不动；归档会话在 Web 侧不可打开、子代理后代被门禁冻结，且**不级联标记**子会话。
-- **决策**：Threadloom 的归档/取消归档完全复用官方服务；不实现"归档目录"式搬运（会绕开状态机）；UI 文案明确「归档 = 从列表隐藏，可恢复」。
+- **决策**：会话管家的归档/取消归档完全复用官方服务；不实现"归档目录"式搬运（会绕开状态机）；UI 文案明确「归档 = 从列表隐藏，可恢复」。
 - **影响**：管理页归档行为与侧栏一致；不做"归档即移动存储"。
 
 ### D-007 内容搜索：MVP 只做标题/元数据，内容检索作为可选能力 · proposed
@@ -78,10 +78,10 @@
 - **决策**：顶层 `engines.dsh` 声明 `>=0.2.1-rc.2 <0.3.0-0`（经 API 审计，见 D-002/Q7）；peerDependencies 只声明 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`（optional），不声明 `@deepseek-ai/dsh*` peers；Host 侧全部通过 Service 契约访问，可选服务 `ctx.get` 探测；不 import 具体实现包。
 - **影响**：DSH 升级时先跑 verify；发现 API 变化收紧范围而非放宽。
 
-### D-015 工具面缺少「会话 → 新会话」，由 Threadloom 补工具 · accepted（0.1.2 实现）
+### D-015 工具面缺少「会话 → 新会话」，由 会话管家补工具 · accepted（0.1.2 实现）
 
 - **背景**：核实 `docs/tool-catalog.md` 与本进程 `Tool` inspect：DSH 没有任何 `session_create` / `session_fork` / `new_session` 工具。`subagent_fork` 只是「带已完成轮次 seed 的子代理委派」，结果回传父会话，不是用户可见/可切换的新会话；`fork` 存在于 Web Remote、Host `ctx.sessions.fork`（live only）与 GUI（会话页轮末分支 / 侧栏菜单 / 快捷键），但都不是 tool。
-- **决策（建议）**：Threadloom M3 注册工具：`session_butler_fork`（当前会话，默认最近完成轮，支持 `at_seq`）、`session_butler_new`（继承 cwd/workspace/preset 的空会话）、只读 `session_butler_list` / `session_butler_detail`。新会话必须出现在同 workspace 且可被 UI 切换；返回 child session id。删除等破坏性写操作仍不作为工具（D-003 不变）。
+- **决策（建议）**：会话管家 M3 注册工具：`session_butler_fork`（当前会话，默认最近完成轮，支持 `at_seq`）、`session_butler_new`（继承 cwd/workspace/preset 的空会话）、只读 `session_butler_list` / `session_butler_detail`。新会话必须出现在同 workspace 且可被 UI 切换；返回 child session id。删除等破坏性写操作仍不作为工具（D-003 不变）。
 - **技术路径**：复用 Remote fork 的实现路径（`sessionQuery.observeSession` → `buildForkSeed` → `ctx.agents.create` → `workspace.attachSession`），或 live 场景用 `ctx.sessions.fork` + resume；工具默认只操作调用方当前会话，任意 session id 需显式参数与用户确认。
 - **M3 收敛（2026-10-28）**：M3 只交付只读 `session_butler_list` / `session_butler_detail`（D-018）；`session_butler_fork` / `session_butler_new` **不进入 0.1.0**，留作二期候选。原因：写工具需要额外的会话切换/父会话授权语义（若允许任意 session id 则风险高），且当前工具面无 fork 属于产品缺口而非发布阻塞。D-015 的技术路径保留，待二期重新确认 ①–③。
 - **0.1.2 实现（2026-10-28，二期）**：产品复盘确认这是**必做项**（用户两次提醒「dsh 没有从会话新建会话的工具」「为啥要走 UI」），不再延后。
@@ -99,7 +99,7 @@
   2. 只能从**已完成轮**分叉，不能切在轮中/任意消息；也没有 Codex 式「编辑上一条用户消息并从该点分叉」（Esc Esc）；
   3. 没有 `/side` 式临时旁支（不落盘、用完即弃）；
   4. 没有「派生树/血缘」视图：普通 fork 在 HEAD 不写 `parentSession`，在已发布版虽写 parent 但 UI 只把 `origin==='subagent'` 当血缘（HEAD）。
-- **决策（建议）**：Threadloom MVP 不重做 fork；二期评估管理页里的「派生树视图 + 按轮分叉入口（复用官方 atSeq）」；`/side` 不承诺（需要上游会话生命周期支持）。
+- **决策（建议）**：会话管家 MVP 不重做 fork；二期评估管理页里的「派生树视图 + 按轮分叉入口（复用官方 atSeq）」；`/side` 不承诺（需要上游会话生命周期支持）。
 - **已落地（0.1.2）**：用户确认「从会话中新建会话」是必做项；按 D-015 补齐 tool 面 `session_butler_fork` / `session_butler_new`，GUI 入口继续直接用官方。
 
 ### D-012 跨 workspace 移动不做 · accepted
@@ -167,7 +167,7 @@
 
 ### D-027 工具创建的会话必须归属调用方 Workspace · fixed（2026-10-29 实测发现）
 
-- **背景**：D-025 修复后重启 DSH，`session_butler_new` / `session_butler_fork` 在真实 Web 会话中可见。实测调用 `session_butler_new` 成功返回 id，但新会话在侧栏落到 **「未分组」**；从 Threadloom 会话库「打开」后主面板显示「选择一个工作区开始」，没有可输入的 composer，无法续聊。
+- **背景**：D-025 修复后重启 DSH，`session_butler_new` / `session_butler_fork` 在真实 Web 会话中可见。实测调用 `session_butler_new` 成功返回 id，但新会话在侧栏落到 **「未分组」**；从 会话管家会话库「打开」后主面板显示「选择一个工作区开始」，没有可输入的 composer，无法续聊。
 - **根因**：Host `sessionController.create` 只有在请求带 `workspaceId` 时才调用 `workspace.attachSession(child)`；工具当时只传 `{cwd, agentPreset}`（照抄调用方 header），创建出的 Session 有 cwd 但不属于任何 Workspace。DSH 的空白会话又只在「当前 blank / 被 Workspace 复用时」显示，因此它既不可见也不可用。
 - **决策**：
   - 新增可选能力 `ButlerSessionCreation.resolveWorkspace({sessionId, cwd})`：Host 侧从 `workspaceRegistry.list()` 先按调用方 sessionIds 命中、再按 cwd 命中，返回 Workspace id；
@@ -182,15 +182,15 @@
 
 - **背景**：用户第二次纠正界面形态，要点：① 以 Codex 模式为准；② ChatGPT/Codex **没有「会话库」这个 feature**；③ ChatGPT app 的归档会话在 **设置 → 已归档的聊天**（live 截图）；④ 插件配置位置不对，应放进**设置**（live 截图；DSH 设置对话框允许第三方插件用 `settings.section` 注入分区，Claude Style / Dream 记忆即如此）。
 - **决策**：
-  - **删除会话库**：不再注册 `main` 面板、不再用 `ctx.layout.selectPanel` 导航、不注册行菜单 `threadloom.detail`/`threadloom.library`、不注册 Plugins 页「打开会话库」；`src/client/page.tsx`、`src/client/navigation.ts` 删除。
-  - **设置页三个分区**（`settings.section`）：`archived-sessions`（已归档的聊天：搜索、按项目分组、取消归档、删除、全部删除，order 44）、`threadloom-trash`（回收站：恢复、永久删除，order 45）、`threadloom`（Threadloom 配置：原 5 字段，order 46）。
-  - **行菜单一项**：`sidebar.workspaces.session.menu.item` 只保留「移入回收站…」（id `threadloom.trash`，order 470）；点击先 `window.confirm`，再走 Host bridge `trash`，成功后刷新会话列表；`inlineMenuEnabled` 继续控制该项。
+  - **删除会话库**：不再注册 `main` 面板、不再用 `ctx.layout.selectPanel` 导航、不注册行菜单 `session-butler.detail`/`session-butler.library`、不注册 Plugins 页「打开会话库」；`src/client/page.tsx`、`src/client/navigation.ts` 删除。
+  - **设置页三个分区**（`settings.section`）：`archived-sessions`（已归档的聊天：搜索、按项目分组、取消归档、删除、全部删除，order 44）、`session-butler-trash`（回收站：恢复、永久删除，order 45）、`session-butler`（会话管家配置：原 5 字段，order 46）。
+  - **行菜单一项**：`sidebar.workspaces.session.menu.item` 只保留「移入回收站…」（id `session-butler.trash`，order 470）；点击先 `window.confirm`，再走 Host bridge `trash`，成功后刷新会话列表；`inlineMenuEnabled` 继续控制该项。
   - **配置入口单一化**：删除 `plugins.row.config` / `plugins.bundle.config` / `plugins.detail.actions`，插件页只保留 `plugins.detail.badge|section`（健康/诊断）。
   - **数据与安全**：已归档列表用 bridge `list`（`includeArchived: true`）过滤 `archived`；取消归档用官方 `ctx.uiWorkspace.unarchiveSession`（侧栏由官方 store 更新）；删除走 bridge `trash`/`trash-many`，进入回收站并保留保留期安全网；永久删除仍受 `permanentDelete` 配置与「输入 id」双重约束。
 - **证据**：用户截图 live 截图、live 截图；DSH 设置槽契约 `packages/client/ui-settings/src/client/contract/slots.ts:57`（`settings.section`，root/list），第三方实例 `dsh-dream` 的 `ctx.slots.inject('settings.section', …)`；62 tests 全绿（客户端 6 个注册/渲染断言重写）。
 - **影响**：D-021 的 Library 核心、D-022 的插件页配置、D-023 的两项行菜单、D-024 的配置按钮均被取代；删除路径变为「官方归档 → 设置 → 已归档的聊天 → 删除」或行菜单直接「移入回收站」；工具面不变（D-015，仍只 list/detail/new/fork）。
 - **live 验证（2026-10-29 18:09，无需重启 Host：只改 Client 半，页面刷新即加载新 `lib/client.js`）**：
-  - 设置对话框左栏出现 **Archived chats / Trash / Threadloom** 三个分区（live 截图）；Archived chats 显示 7 条（`/home/leoric/code/deepseek-harness` 5 条、`/home/leoric/code/jimuTensor` 2 条），行内 Unarchive/Delete + 右上 Delete all（`live-settings-archived-chats.png`）；Trash 显示 2 条 + 保留期与永久删除禁用提示（`live-settings-trash.png`）；Threadloom 显示 5 个字段（`live-settings-threadloom.png`）。
+  - 设置对话框左栏出现 **Archived chats / Trash / 会话管家** 三个分区（live 截图）；Archived chats 显示 7 条（`/home/leoric/code/deepseek-harness` 5 条、`/home/leoric/code/jimuTensor` 2 条），行内 Unarchive/Delete + 右上 Delete all（`live-settings-archived-chats.png`）；Trash 显示 2 条 + 保留期与永久删除禁用提示（`live-settings-trash.png`）；会话管家显示 5 个字段（`live 截图`）。
   - 会话行 "..." 菜单只剩官方项 + **Move to trash…**（无会话详情/会话库），`live-row-menu.png`。
   - 已归档列表在旧 Host 上首次加载约 7s（`list` includeArchived 会对 100 行读标题）；新增 Host `archivedOnly` 过滤后只读归档行，**需重启 DSH 加载 Host 半**，重启后该项变快。未重启时 Client 仍工作：旧 Host 忽略未知字段，返回全量后由客户端过滤。
   - 未在 live 执行写操作（取消归档/删除）以避免改动用户数据；写入路径由 Host 服务测试与客户端单测覆盖。
@@ -200,15 +200,15 @@
 
 - **背景**：D-029 把删除做成「已归档的聊天 → 删除 → 移入回收站 → 回收站 → 永久删除」两步。用户直接质问：为什么同时有「已归档的聊天」和「回收站」两个页面，删除完还要去回收站再删一次？这把插件自己的安全模型泄漏成了用户流程，也违背 Codex/ChatGPT 的单一删除语义。
 - **决策**：
-  - **移除用户可见回收站**：不再注册 `threadloom-trash` 设置分区，删除 `ThreadloomTrashSection`；设置页只剩「已归档的聊天」（order 44）与「Threadloom」（order 45）。
+  - **移除用户可见回收站**：不再注册 `session-butler-trash` 设置分区，删除 `ButlerTrashSection`；设置页只剩「已归档的聊天」（order 44）与「会话管家」（order 45）。
   - **一步永久删除**：已归档页的「永久删除」/「全部删除」与行菜单的「删除聊天…」直接调用新 bridge `delete` / `delete-many`；Host 先走既有 trash 管线（跨进程租约、运行中停止、同盘 rename），随后立即 purge，成功后回收站不残留记录。确认对话框明确「永久删除，无法恢复」。
   - **UI 删除不再受 `permanentDelete` 配置门禁**：显式确认即授权；字段保留在 schema 与 CLI 的 `purge` 命令（兼容已有 profile patch），不在设置表单展示。
   - **安全网留在实现/CLI 层**：`/session-butler trash|restore|purge` 命令与 Host 测试仍保留；若 purge 中途失败，记录仍在回收站，可用 CLI 恢复，但 GUI 不再提供回收站页面。
-  - 行菜单 id 由 `threadloom.trash` 改为 `threadloom.delete`，文案改为「删除聊天…」。
+  - 行菜单 id 由 `session-butler.trash` 改为 `session-butler.delete`，文案改为「删除聊天…」。
 - **理由**：用户流程只能有一个删除动作；安全网应藏在实现层，而不是要求用户再操作一次。归档与删除是两种状态，不能展示成两个并行的删除列表。
 - **影响**：D-003 的「插件侧回收站优先」从用户可见功能降级为内部实现/CLI 能力；D-029 的回收站页与行菜单动作被取代；`permanentDelete` 默认值不再影响 GUI；Host 新增 `delete`/`delete-many`；版本 **0.2.1**。
 - **验证**：`m1-delete` 覆盖 delete 不留回收站记录、级联、deleteMany 逐项失败；`m2-bridge` 覆盖 delete 转发；`m2-client` 更新为两个设置分区 + 删除文案；`npm run verify` 全绿（65 tests）。
-- **live 验证（2026-10-30 09:50，Client 半页面刷新即热加载）**：设置左栏只剩 **Archived chats / Threadloom** 两项（live 截图）；已归档页 7 条仍按项目分组，按钮为 **Unarchive / Delete permanently**，右上 Delete all（`live-settings-archived-0.2.1.png`）；会话行菜单只剩官方项 + **Delete chat…**（`live-row-menu-0.2.1.png`）。
+- **live 验证（2026-10-30 09:50，Client 半页面刷新即热加载）**：设置左栏只剩 **Archived chats / 会话管家** 两项（live 截图）；已归档页 7 条仍按项目分组，按钮为 **Unarchive / Delete permanently**，右上 Delete all（`live-settings-archived-0.2.1.png`）；会话行菜单只剩官方项 + **Delete chat…**（`live-row-menu-0.2.1.png`）。
 - **Host 半待重启验证**：新增 `delete`/`delete-many` 需要重启 3080 才加载；重启前 Client 调 delete 会 404（预期）。重启后需实际删除一个临时会话，确认无回收站残留，并补最终截图。
 
 ### D-031 测试分层：L1 真实组合 + 一条 L2 浏览器 E2E · accepted（用户 2026-10-31 确认「L1 + 一条 L2」）
@@ -216,7 +216,7 @@
 - **背景**：用户问是否有端到端测试，并明确「利用那个什么浏览器来着（ai 常用的）」。调研 DSH 官方测试策略（`docs/testing.md`：unit → coverage → real-API e2e → snapshot → Web browser）以及社区插件（dsh-claude-style、dsh-intelligent-ui、dshmarket）的 CI 证据后，发现插件此前只有 65 个单元/契约测试，没有真实 Loader 组合，也没有浏览器路径。
 - **决策**：
   - **L1**：`e2e/composition.e2e.mjs`，用一次性 `DSH_HOME` + `npm pack` 可发布产物 + 真实 `dsh web` CLI，断言 Client bundle 注入、`/session-butler/api/status`、Host 后端能力、`delete` 路由与空归档列表。
-  - **L2**：`e2e/live-ui.e2e.mjs`，用 Playwright Chromium 打开同一真实 GUI；预置 idle 持久化会话（避免依赖模型 Provider），验证设置页只有 Archived chats / Threadloom、行菜单一步删除、已归档页永久删除、会话目录与回收站零残留。
+  - **L2**：`e2e/live-ui.e2e.mjs`，用 Playwright Chromium 打开同一真实 GUI；预置 idle 持久化会话（避免依赖模型 Provider），验证设置页只有 Archived chats / 会话管家、行菜单一步删除、已归档页永久删除、会话目录与回收站零残留。
   - 不加完整浏览器回归矩阵；L2 只保留一条稳定、可诊断的主路径。CI 单独 `e2e` job；失败时上传截图。
 - **理由**：这两层分别覆盖真实组合边界和真实用户路径，成本可控且不依赖外部 API；再往上是快照/视觉测试，收益低于维护成本。
 - **影响**：新增 `e2e/`、Playwright devDependency、`test:e2e` 脚本与 CI job；测试只用临时 `DSH_HOME`，不读用户真实 `~/.dsh`。运行中会话强删仍由 Host/单元测试与 D-013 约束，不塞进 L2。E2E 先 `npm pack`，因此需要先 build；Playwright 失败截图上传，不加入 `verify`。

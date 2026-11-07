@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Threadloom",
+    "title": "Session Butler",
     "description": "Session management for DeepSeek Harness: browse, filter, inspect, batch-manage and trash sessions across workspaces, with read-only agent tools.",
     "detail": "docs/usage.md"
   }

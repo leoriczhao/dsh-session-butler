@@ -8,15 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — D-030：删除即删除，取消用户可见回收站
 
-- **移除回收站页面**：删除 `ThreadloomTrashSection` 与 `threadloom-trash` 设置分区；设置页只剩「已归档的聊天」「Threadloom」两项。用户指出「已归档的聊天」+「回收站」两个页面、删除后还要去回收站再删一次不合逻辑。
+- **移除回收站页面**：删除 `ButlerTrashSection` 与 `session-butler-trash` 设置分区；设置页只剩「已归档的聊天」「会话管家」两项。用户指出「已归档的聊天」+「回收站」两个页面、删除后还要去回收站再删一次不合逻辑。
 - **一步永久删除**：已归档页「永久删除」/「全部删除」与行菜单「删除聊天…」直接调新 bridge `delete`/`delete-many`；Host 先走既有 trash 管线（跨进程租约、运行中停止、同盘移动）再立即 purge，成功后回收站无残留。确认对话框明确「永久删除，无法恢复」。
 - **不再依赖 `permanentDelete` 配置**：GUI 删除以显式确认为授权；该字段保留在 schema/CLI 供 `purge` 使用，不再出现在设置表单。
 - **底层安全网保留**：`/session-butler trash|restore|purge` 命令与 Host 测试仍在；若 purge 中途失败，记录留在回收站，可用 CLI 恢复（GUI 不暴露）。
-- **行菜单**：id 从 `threadloom.trash` 改为 `threadloom.delete`，文案改为「删除聊天…」。
+- **行菜单**：id 从 `session-butler.trash` 改为 `session-butler.delete`，文案改为「删除聊天…」。
 - **Host 新增**：`SessionButlerService.delete`/`deleteMany` + bridge `delete`/`delete-many`；`delete` 绕过 `permanentDelete` 门禁（调用方已显式确认）。
 - **文档**：docs/decisions.md 新增 D-030（D-003/D-029 标注用户可见部分被取代）；README/usage/architecture/D3 更新；版本 0.2.1。
 - **测试**：m1-delete 覆盖 delete 不留回收站记录/级联/deleteMany 逐项失败；m2-bridge 覆盖 delete 转发；m2-client 更新为两个设置分区 + 删除文案；npm run verify 65 tests + 57 package checks 全绿。新增 `e2e/` 两层真实验证：L1 用临时 DSH_HOME 启动真实 `dsh web` 并断言 Loader/bridge；L2 用 Playwright 在真实设置页删除行菜单与已归档会话、断言回收站零残留；CI 增加独立 `e2e` job，见 [docs/testing.md](docs/testing.md)。
-- **live 验证（2026-10-30 09:50，Client 半热加载）**：设置左栏只剩 Archived chats / Threadloom；已归档页按钮为 Unarchive / Delete permanently；行菜单只剩官方项 + Delete chat…。证据 live 截图、`live-settings-archived-0.2.1.png`、`live-row-menu-0.2.1.png`。
+- **live 验证（2026-10-30 09:50，Client 半热加载）**：设置左栏只剩 Archived chats / 会话管家；已归档页按钮为 Unarchive / Delete permanently；行菜单只剩官方项 + Delete chat…。证据 live 截图、`live-settings-archived-0.2.1.png`、`live-row-menu-0.2.1.png`。
 - **live 状态**：新增 Host `delete`/`delete-many` 需重启 3080 后生效；重启前删除请求会 404（预期），重启后需实际删一个临时会话确认无回收站残留。
 
 ## [0.2.0] — 2026-10-29
@@ -26,18 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **删除会话库**：移除 main 面板、ctx.layout.selectPanel 导航、行菜单「会话详情…」/「会话库…」、Plugins 页「打开会话库」按钮；删除 src/client/page.tsx、src/client/navigation.ts（约 900 行 UI 代码退出运行路径）。用户明确「没有会话库这个 feature」。
 - **新增三个设置分区**（settings.section，DSH 设置对话框左栏）：
   - **已归档的聊天**（archived-sessions，order 44）：搜索、按项目分组、取消归档、删除、全部删除；取消归档走官方 uiWorkspace.unarchiveSession，删除进入回收站（trash/trash-many，≤50/批）。
-  - **回收站**（threadloom-trash，order 45）：恢复、永久删除（需 permanentDelete: confirm + 输入完整 session id）。
-  - **Threadloom**（threadloom，order 46）：原 5 个 volatile 配置字段，经 configForms 保存。
-- **行菜单收窄**：sidebar.workspaces.session.menu.item 只保留「移入回收站…」（threadloom.trash，order 470）；window.confirm 后走 bridge，成功后刷新会话列表；inlineMenuEnabled 继续控制显隐。
+  - **回收站**（session-butler-trash，order 45）：恢复、永久删除（需 permanentDelete: confirm + 输入完整 session id）。
+  - **会话管家**（session-butler，order 46）：原 5 个 volatile 配置字段，经 configForms 保存。
+- **行菜单收窄**：sidebar.workspaces.session.menu.item 只保留「移入回收站…」（session-butler.trash，order 470）；window.confirm 后走 bridge，成功后刷新会话列表；inlineMenuEnabled 继续控制显隐。
 - **插件页收窄**：删除 plugins.row.config / plugins.bundle.config / plugins.detail.actions；只保留 plugins.detail.badge（健康徽标）与 plugins.detail.section（诊断区块）。
-- **配置入口单一化**：配置只在 **设置 → Threadloom** 出现，不再有 bundle 页「配置」按钮/对话框或 row 配置页入口。
+- **配置入口单一化**：配置只在 **设置 → 会话管家** 出现，不再有 bundle 页「配置」按钮/对话框或 row 配置页入口。
 - **兼容**：未重启的旧 Host 仍可读；inlineMenuEnabled 缺失时回退旧字段 panelEntryEnabled（保存时映射回旧路径）。工具面不变（list/detail/new/fork；删除仍不进工具面，D-003/D-015）。
 - **文档/证据**：新增 早期调研（Codex codex_app 线程工具面补遗）、早期调研（调研修正记录）；live 截图、dsh-settings-dialog.png；docs/decisions.md 新增 D-029，D-021/D-022/D-023/D-024 标注被取代。
 - **性能/兼容**：桥 `list` 增加 `archivedOnly` 过滤（设置页只读归档行，避免为 100 行读标题的 ~7s 延迟）；旧 Host 忽略该字段仍可工作（客户端过滤），重启后生效。
-- **live 验证（2026-10-29 18:09，live 3080，Client 半热加载）**：设置左栏出现 Archived chats/Trash/Threadloom；已归档 7 条按项目分组、Trash 2 条、配置 5 字段；行菜单只剩官方项 + Move to trash…。证据：live 截图、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live-settings-threadloom.png`、`live-row-menu.png`。
+- **live 验证（2026-10-29 18:09，live 3080，Client 半热加载）**：设置左栏出现 Archived chats/Trash/会话管家；已归档 7 条按项目分组、Trash 2 条、配置 5 字段；行菜单只剩官方项 + Move to trash…。证据：live 截图、`live-settings-archived-chats.png`、`live-settings-trash.png`、`live 截图`、`live-row-menu.png`。
 - **测试**：客户端测试重写为 6 个用例（注册表/延迟绑定/释放顺序/设置页 SSR/行菜单开关），npm run verify 62 tests + 57 package checks + 75 files tarball 全绿。
 
 ## [Unreleased]
+
+### Changed — 改名：会话管家（Session Butler）
+
+- 产品显示名由 Threadloom 改为 **会话管家 / Session Butler**，与包名 `dsh-session-butler` 对应；README、文档、界面文案、locale 元数据、图标 aria-label、LICENSE 同步更新。
+- 导出符号 `Threadloom*` 改为 `Butler*`；插槽 id 前缀由 `threadloom` 改为 `session-butler`（旧 id 仅存在于历史 CHANGELOG）。
 
 ### Changed — 清理过期文档与死代码
 
@@ -88,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — 配置入口不可见（D-024，2026-10-29）
 
-- **bundle 页标题旁新增「配置」按钮**（`plugins.detail.actions`，id `threadloom-configure`，order 100）：点击弹出 **Threadloom 设置** 对话框，5 个字段改完即保存并显示「已保存。」；不再需要先滚到 bundle 页底部找行入口。
+- **bundle 页标题旁新增「配置」按钮**（`plugins.detail.actions`，id `session-butler-configure`，order 100）：点击弹出 **会话管家设置** 对话框，5 个字段改完即保存并显示「已保存。」；不再需要先滚到 bundle 页底部找行入口。
 - **共用同一份表单**：客户端 apply 时从 `ctx.get('configForms').get(rowId)` 取一次表单，对话框与 `plugins.row.config` 行配置页渲染同一 form，仍单源写 profile patch；`plugins.bundle.config` 只保留健康/统计与「打开会话库」，不内联重复表单。
 - **旧 Host 兼容**：读取时 `inlineMenuEnabled` 缺失则回退旧字段 `panelEntryEnabled`，保存自动映射旧路径；重启后恢复新字段。
 - **真实浏览器验收**（隔离 `DSH_HOME` + Playwright）：bundle 页标题旁「配置」按钮可见；对话框 5 字段；保存 `trashRetentionDays` → 40 写回 `cordis.patch.yml`；关闭对话框；无 console/page error。证据：live 截图、`plugin-configure-dialog.png`。
@@ -125,7 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   independent Session (default: latest completed turn; optional exact inclusive
   `atSeq`). Uses the Host `sessionController.fork` path — the same semantics
   as the Web Remote `session.fork` — so the child appears in the Web sidebar
-  and Threadloom list and can be opened and continued.
+  and 会话管家 list and can be opened and continued.
 - Both tools are advertised only when the composition provides
   `sessionController`; deletion and other destructive writes stay off the tool
   face (D-003). This closes the tool-face gap D-015 had deferred past 0.1.0/0.1.1.
@@ -259,7 +264,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — foundation (package scaffolding, no user-facing feature yet)
 
-- Publishable DSH plugin package `dsh-session-butler` (display name Threadloom):
+- Publishable DSH plugin package `dsh-session-butler` (display name 会话管家):
   npm manifest with `dsh.bundle.patch` + `dsh.client`, top-level `engines.dsh: >=0.2.1-rc.2 <0.3.0-0`
   (lowered from rc.3 after auditing every MVP-used Host/Client API against the rc.2 release),
   locale metadata (en/zh), icon, MIT license and a `.npmignore`-free `files` closure.

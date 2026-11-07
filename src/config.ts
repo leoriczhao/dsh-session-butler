@@ -1,5 +1,5 @@
 /**
- * Threadloom configuration schema.
+ * Plugin configuration schema.
  *
  * The values are validated by Cordis when the plugin row mounts, and can be overridden
  * from a profile's `cordis.patch.yml`. Keep the defaults safe: the foundation release
@@ -27,10 +27,10 @@ export function readConfigValue<T>(value: Volatile<T> | T): T {
   return value as T
 }
 
-/** Configuration accepted by the Threadloom Host half. */
-export interface ThreadloomConfig {
+/** Configuration accepted by the plugin's Host half. */
+export interface ButlerConfig {
   /**
-   * How long a session stays in Threadloom's trash before its files may be purged.
+   * How long a session stays in the plugin's trash before its files may be purged.
    * `0` disables automatic purging; permanent deletion then stays a manual action.
    */
   trashRetentionDays: Volatile<number>
@@ -47,11 +47,11 @@ export interface ThreadloomConfig {
   permanentDelete: Volatile<'disabled' | 'confirm'>
   /**
    * How long to wait for the owner of a loaded session to release it before a
-   * delete request is refused. Threadloom does not stop or archive the session.
+   * delete request is refused. The plugin does not stop or archive the session.
    */
   liveSettleTimeoutMs: Volatile<number>
   /**
-   * Whether Threadloom adds its actions to every Session row's "..." menu
+   * Whether the plugin adds its actions to every Session row's "..." menu
    * (delete session). Turning it off removes that
    * inline entries only; commands, agent tools and the Plugins-page block stay.
    */
@@ -98,6 +98,6 @@ export const Config = z.object({
   inlineMenuEnabled: z
     .boolean()
     .default(true)
-    .description('Add Threadloom actions to each Session row\'s "..." menu.')
+    .description('Add the plugin\'s actions to each Session row\'s "..." menu.')
     .volatile(),
 })

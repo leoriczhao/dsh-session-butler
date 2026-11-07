@@ -6,7 +6,7 @@
  * `required: true` form is only the authoring DSL of `defineTool()`, which
  * first-party plugins compile before registering; published third-party plugins
  * cannot import `@deepseek-ai/dsh-tools`, so this module owns the same compile
- * step for Threadloom. Registering the property map directly made native
+ * step for the plugin. Registering the property map directly made native
  * function calling fail with `Invalid schema for function ...: got 'type: null'`
  * because a bare property map has no outer `{type: 'object'}` root.
  *

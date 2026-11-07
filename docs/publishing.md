@@ -1,6 +1,6 @@
 # 发布流程（Runbook）
 
-> 目标：把 `dsh-session-butler`（Threadloom）作为一个**可安装、可发现、可更新**的 DSH npm 插件包发布。
+> 目标：把 `dsh-session-butler`（会话管家）作为一个**可安装、可发现、可更新**的 DSH npm 插件包发布。
 > 当前 DSH 运行时基线：`0.2.1-rc.2` 起（`engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`，下限经已用到的 Host/Client API 在 rc.2 上逐项审计）。
 
 ## 0. 前置
@@ -97,7 +97,7 @@ dsh --profile tl-dev --dump-config | grep -A3 'session-butler'
 一次性 home 跑完整闭环：
 
 ```bash
-export DSH_HOME=/tmp/threadloom-e2e-home
+export DSH_HOME=/tmp/session-butler-e2e-home
 rm -rf "$DSH_HOME" && mkdir -p "$DSH_HOME"
 dsh --profile tl-iso --from-default-profile web --dump-config
 dsh plugin --profile tl-iso add /home/leoric/code/dsh-session-butler

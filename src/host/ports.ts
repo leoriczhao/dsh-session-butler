@@ -1,5 +1,5 @@
 /**
- * Structural ports for the subset of DSH Host services Threadloom uses.
+ * Structural ports for the subset of DSH Host services the plugin uses.
  *
  * Why local structural types instead of importing `@deepseek-ai/dsh-*` types:
  * the plugin must keep working across the published rc channel (rc.2 / rc.3 /
@@ -50,7 +50,7 @@ export interface SessionLineageTraceLike {
   readonly complete?: boolean
 }
 
-/** One cloned raw session event (only the fields Threadloom reads). */
+/** One cloned raw session event (only the fields the plugin reads). */
 export interface SessionEventLike {
   readonly type?: string
   readonly seq?: number
@@ -81,7 +81,7 @@ export interface SessionTitleObservationLike {
   }
 }
 
-/** The `sessionQuery` methods Threadloom consumes. */
+/** The `sessionQuery` methods the plugin consumes. */
 export interface SessionQueryPort {
   observeSession(sessionId: string, options?: { signal?: AbortSignal; projectionMode?: 'all' | 'none' }): Promise<SessionObservationLike>
   traceSession(sessionId: string, signal?: AbortSignal): Promise<SessionLineageTraceLike>
@@ -100,7 +100,7 @@ export interface SessionPersistenceSnapshotLike {
   readonly sizeBytes?: number
 }
 
-/** The `sessionPersistence` methods Threadloom consumes. */
+/** The `sessionPersistence` methods the plugin consumes. */
 export interface SessionPersistencePort {
   open(sessionId: string, access: 'write', options?: { signal?: AbortSignal }): Promise<{ close(): Promise<void> }>
   stat(
@@ -111,7 +111,7 @@ export interface SessionPersistencePort {
   list(options?: { signal?: AbortSignal }): Promise<readonly SessionPersistenceSnapshotLike[]>
 }
 
-/** One live Session object (only the fields Threadloom reads). */
+/** One live Session object (only the fields the plugin reads). */
 export interface LiveSessionLike {
   readonly id?: string
   readonly header?: SessionHeaderLike
@@ -123,7 +123,7 @@ export interface SessionsPort {
   list?(): readonly (LiveSessionLike | unknown)[]
 }
 
-/** One live Agent object (only the fields Threadloom reads). */
+/** One live Agent object (only the fields the plugin reads). */
 export interface LiveAgentLike {
   readonly sessionId?: string
   readonly status?: string
@@ -156,7 +156,7 @@ export interface WorkspaceRegistryPort {
   list?(): readonly WorkspaceDescriptorLike[]
 }
 
-/** The Workspace fields Threadloom reads when resolving a caller's Workspace. */
+/** The Workspace fields the plugin reads when resolving a caller's Workspace. */
 export interface WorkspaceDescriptorLike {
   readonly id?: string
   readonly path?: string
@@ -181,7 +181,7 @@ export interface ButlerCommandDefinition {
   readonly handler: (invocation: ButlerCommandInvocation) => ButlerCommandResult | Promise<ButlerCommandResult>
 }
 
-/** The `commands` registry subset Threadloom consumes. */
+/** The `commands` registry subset the plugin consumes. */
 export interface CommandsPort {
   register(definition: ButlerCommandDefinition): () => void
 }
@@ -194,7 +194,7 @@ export interface HostWebRoute {
   handler(request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse): void | Promise<void>
 }
 
-/** The `webServer` Host service subset Threadloom consumes. */
+/** The `webServer` Host service subset the plugin consumes. */
 export interface WebServerPort {
   register(route: HostWebRoute): () => void
 }
@@ -233,7 +233,7 @@ export interface ButlerToolRunContext {
 
 /**
  * One model-facing tool definition, structurally compatible with rc.2
- * `ToolDefinition`. Threadloom builds this without importing `@deepseek-ai/dsh-tools`,
+ * `ToolDefinition`. the plugin builds this without importing `@deepseek-ai/dsh-tools`,
  * mirroring how published third-party plugins register tools.
  */
 export interface ButlerToolDefinition {
@@ -280,7 +280,7 @@ export interface ButlerSessionCreation {
 
 /** Request subset of the Host `sessionController.fork` Remote (one prefix → a new Session). */
 export interface ButlerSessionForkRequest {
-  /** Source Session to branch; Threadloom tools always pass the caller's own Session. */
+  /** Source Session to branch; the plugin tools always pass the caller's own Session. */
   readonly sessionId: string
   /** Exact inclusive source event seq; omitted selects the latest completed-turn prefix. */
   readonly atSeq?: number
@@ -312,7 +312,7 @@ export interface ButlerToolCapabilities {
   readonly fork?: ButlerSessionForking
 }
 
-/** The `tools` registry subset Threadloom consumes. */
+/** The `tools` registry subset the plugin consumes. */
 export interface ToolsPort {
   register(definition: ButlerToolDefinition): () => void
 }

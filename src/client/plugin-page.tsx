@@ -70,8 +70,8 @@ function healthLevel(health: BridgeStatus | null): 'loading' | 'ok' | 'degraded'
   return 'ok'
 }
 
-/** Whether a detail subject belongs to the Threadloom bundle. */
-function isThreadloomSubject(subject: PluginsSubjectLike | undefined): boolean {
+/** Whether a detail subject belongs to the plugin bundle. */
+function isButlerSubject(subject: PluginsSubjectLike | undefined): boolean {
   if (subject === undefined || subject.kind === 'item') return false
   return subject.pkg?.name === PLUGIN_ID
 }
@@ -163,9 +163,9 @@ function HealthBlock({ health, error, loading, t, onRefresh }: {
 }
 
 /** The health badge contributed to `plugins.detail.badge`. */
-export function ThreadloomDetailBadge({ subject, t }: DetailViewPropsLike): ReactElement | null {
+export function ButlerDetailBadge({ subject, t }: DetailViewPropsLike): ReactElement | null {
   const { health } = useHealth()
-  if (!isThreadloomSubject(subject)) return null
+  if (!isButlerSubject(subject)) return null
   const level = healthLevel(health)
   const label = level === 'loading'
     ? t('loading')
@@ -183,9 +183,9 @@ export function ThreadloomDetailBadge({ subject, t }: DetailViewPropsLike): Reac
 }
 
 /** The diagnostics section contributed to `plugins.detail.section`. */
-export function ThreadloomDetailSection({ subject, t }: DetailViewPropsLike): ReactElement | null {
+export function ButlerDetailSection({ subject, t }: DetailViewPropsLike): ReactElement | null {
   const { health, error, loading, refresh } = useHealth()
-  if (!isThreadloomSubject(subject)) return null
+  if (!isButlerSubject(subject)) return null
   return (
     <section className="sb-plugin-section">
       <style>{PLUGIN_CSS}</style>

@@ -1,7 +1,7 @@
 /**
  * Session-row "..." menu contribution (D-030).
  *
- * Codex keeps chat actions on the row's own menu; Threadloom adds the one
+ * Codex keeps chat actions on the row's own menu; the plugin adds the one
  * action the official menu does not own: permanently deleting a chat. The row
  * menu follows the same one-step delete rule as Settings → Archived chats:
  * confirm once, then the chat is gone (no recycle-bin second step).
@@ -29,7 +29,7 @@ export interface DeleteMenuItemProps {
 }
 
 /** "Delete session" row: confirm once, then permanently delete and refresh the list. */
-export function ThreadloomDeleteMenuItem(props: DeleteMenuItemProps): ReactElement | null {
+export function ButlerDeleteMenuItem(props: DeleteMenuItemProps): ReactElement | null {
   const { sessionId, displayTitle, useMenuOpenState, t, configForm, refreshSessions } = props
   const [, setMenuOpen] = useMenuOpenState()
   if (!inlineMenuEnabledFromConfig(configForm?.getSnapshot().value)) return null

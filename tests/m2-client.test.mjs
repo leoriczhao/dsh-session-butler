@@ -137,13 +137,13 @@ test('apply registers Codex-style settings sections and no library/nav entries',
   assert.equal(names.includes('plugins.detail.actions'), false)
 
   const sections = fake.slotRegistrations.filter(entry => entry.options.name === 'settings.section')
-  assert.deepEqual(sections.map(entry => entry.options.id), ['archived-sessions', 'threadloom'])
+  assert.deepEqual(sections.map(entry => entry.options.id), ['archived-sessions', 'session-butler'])
   assert.deepEqual(sections.map(entry => entry.options.order), [44, 45])
-  assert.deepEqual(sections.map(entry => entry.options.label()), ['已归档的聊天', 'Threadloom'])
+  assert.deepEqual(sections.map(entry => entry.options.label()), ['已归档的聊天', '会话管家'])
   assert.ok(sections.every(entry => typeof entry.component === 'function'))
 
   const menu = fake.slotRegistrations.find(entry => entry.options.name === 'sidebar.workspaces.session.menu.item')
-  assert.equal(menu.options.id, 'threadloom.delete')
+  assert.equal(menu.options.id, 'session-butler.delete')
   assert.equal(menu.options.order, 470)
 })
 
@@ -225,9 +225,9 @@ test('the config page renders the four plugin fields in Settings', async () => {
   const plugin = await loadPlugin()
   const fake = makeContext()
   plugin.apply(fake.ctx)
-  const section = fake.slotRegistrations.find(entry => entry.options.id === 'threadloom')
+  const section = fake.slotRegistrations.find(entry => entry.options.id === 'session-butler')
   const html = renderToStaticMarkup(React.createElement(section.component, { close() {} }))
-  assert.match(html, /Threadloom 设置/)
+  assert.match(html, /会话管家设置/)
   assert.match(html, /回收站保留天数/)
   assert.match(html, /等待会话释放超时/)
   assert.match(html, /级联删除子代理会话/)
