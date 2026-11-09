@@ -228,7 +228,7 @@ test('the config page renders the four plugin fields in Settings', async () => {
   const section = fake.slotRegistrations.find(entry => entry.options.id === 'session-butler')
   const html = renderToStaticMarkup(React.createElement(section.component, { close() {} }))
   assert.match(html, /会话管家设置/)
-  assert.match(html, /回收站保留天数/)
+  assert.match(html, /内部回收站过期标记（天）/)
   assert.match(html, /等待会话释放超时/)
   assert.match(html, /级联删除子代理会话/)
   assert.match(html, /会话行菜单动作/)
