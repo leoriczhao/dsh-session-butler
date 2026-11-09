@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Session Butler",
-    "description": "Session management for DeepSeek Harness: browse, filter, inspect, batch-manage and trash sessions across workspaces, with read-only agent tools.",
+    "description": "Session management for DeepSeek Harness: archived chats and GUI deletion, with agent tools to list, inspect, create and fork sessions.",
     "detail": "docs/usage.md"
   }
 }

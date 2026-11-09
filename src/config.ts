@@ -30,8 +30,8 @@ export function readConfigValue<T>(value: Volatile<T> | T): T {
 /** Configuration accepted by the plugin's Host half. */
 export interface ButlerConfig {
   /**
-   * How long a session stays in the plugin's trash before its files may be purged.
-   * `0` disables automatic purging; permanent deletion then stays a manual action.
+   * Days until internal trash entries are marked expired; there is no automatic purge.
+   * `0` disables expiry marking. GUI deletion still purges immediately.
    */
   trashRetentionDays: Volatile<number>
   /**
@@ -41,8 +41,8 @@ export interface ButlerConfig {
    */
   cascadeSubagents: Volatile<boolean>
   /**
-   * Whether the management page offers permanent deletion at all. `disabled` keeps the
-   * trash as the only destructive action; `confirm` requires typing the exact session id.
+   * Compatibility setting for the Host service's explicit purge operation.
+   * `confirm` requires the exact session id; GUI deletion bypasses this gate.
    */
   permanentDelete: Volatile<'disabled' | 'confirm'>
   /**
@@ -51,9 +51,8 @@ export interface ButlerConfig {
    */
   liveSettleTimeoutMs: Volatile<number>
   /**
-   * Whether the plugin adds its actions to every Session row's "..." menu
-   * (delete session). Turning it off removes that
-   * inline entries only; commands, agent tools and the Plugins-page block stay.
+   * Whether the plugin adds deletion to every Session row's "..." menu.
+   * Turning it off hides only that entry; settings, agent tools and diagnostics stay.
    */
   inlineMenuEnabled: Volatile<boolean>
 }
@@ -69,7 +68,7 @@ export const Config = z.object({
     .max(3650)
     .default(30)
     .description(
-      'Days a deleted session stays recoverable in the trash. 0 keeps entries until purged manually.',
+      'Days until internal trash entries are marked expired; no automatic purge. 0 disables expiry marking.',
     )
     .volatile(),
   cascadeSubagents: z
@@ -83,7 +82,7 @@ export const Config = z.object({
     .union(['disabled', 'confirm'])
     .default('disabled')
     .description(
-      'Whether permanent deletion is offered. "confirm" requires typing the exact session id.',
+      'Gate for explicit Host purge calls: "confirm" requires the exact session id. Does not restrict GUI deletion.',
     )
     .volatile(),
   liveSettleTimeoutMs: z

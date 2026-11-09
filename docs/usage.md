@@ -52,7 +52,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
 - 「永久删除」/「全部删除」直接调用 bridge `delete` / `delete-many`：确认后立即永久删除，**不会**进入第二个回收站页面；
 - 搜索按标题 / 路径 / id 过滤；列表按项目（cwd）分组，无项目归入「无项目」。
 
-> 没有「设置 → 回收站」入口（D-030）。Host 仍在内部保留 trash 管线（跨进程租约、运行中停止、同盘移动）作为删除安全层；CLI 的 `trash`/`restore`/`purge` 命令继续可用，但 GUI 删除是一步完成的。
+> 没有「设置 → 回收站」入口（D-030），0.3.0 也已移除 `/session-butler` 命令（D-034）。GUI 删除先检查会话占用和跨进程写租约，再同盘移动并立即清除；插件不会主动停止会话。Host 服务与 HTTP bridge 仍保留 `trash`/`restore`/`purge`/`list-trash` 等内部能力，但不提供 GUI/CLI 回收站恢复或清理入口。取消归档只恢复侧栏显示，不能恢复已删除会话。
 
 ## 配置（设置 → 会话管家）
 
@@ -60,18 +60,18 @@ dsh plugin --profile <profile> remove dsh-session-butler
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `trashRetentionDays` | 30 | CLI 回收站保留天数；0 = 不设到期时间（GUI 不显示回收站） |
+| `trashRetentionDays` | 30 | 内部回收站条目的过期标记天数；0 = 不标记过期。不会自动清理，也不延迟 GUI 删除 |
 | `cascadeSubagents` | true | 删除时级联子代理会话（fork 永不级联） |
 | `liveSettleTimeoutMs` | 3000 | 等待宿主自行释放已加载会话的毫秒上限；插件不会主动停止或归档该会话 |
 | `inlineMenuEnabled` | true | 是否在会话行 "..." 菜单显示「删除会话」 |
 
-> `permanentDelete` 字段仍保留在 schema 中供 CLI `purge` 使用（兼容已有 profile patch），但 GUI 删除以确认对话框授权，不再要求该配置。
+> `permanentDelete` 字段仍保留在 schema 中以兼容已有 profile patch，默认 `disabled`；Host 服务的 `purge(sessionId, confirmId)` 要求配置为 `confirm` 且两个 id 完全一致。GUI 删除以确认对话框授权，直接清除内部条目，不受该配置限制。
 
 也可以在 profile 的 `cordis.patch.yml` 中覆盖（覆盖时 `config` 整块替换，未写的键使用默认值）。插件详情页仍显示**功能级健康**（版本、会话/回收站/运行中数量、存储可写性、后端能力、最近错误），数据来自插件自报的 `/session-butler/api/status`。
 
 ## Agent 工具（M3 + 0.1.2）
 
-插件注册四个模型可见工具（删除等破坏性写操作仍只留给人类 UI/命令）：
+插件按宿主能力注册以下模型工具；删除只提供 GUI 入口，回收站恢复与清理不注册为模型工具：
 
 | 工具 | 参数 | 返回 |
 |---|---|---|
@@ -80,7 +80,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
 | `session_butler_new` | 无 | 在**调用方会话自己的 cwd/preset** 下新建空会话，并自动归属调用方 Workspace，返回 `sessionId`（不接受任意路径/workspace/目标会话 id；空白会话可点侧栏「新会话」复用后开始对话） |
 | `session_butler_fork` | `atSeq?`（精确包含的源事件 seq；省略=最近一个已完成轮） | 把**调用方会话**分叉成新的独立会话，返回 `sessionId`/`sourceSessionId`/`atSeq`；同一路径与 Web Remote `session.fork` 语义一致 |
 
-- `list`/`detail` 只读；`new`/`fork` 只创建新的平级会话，不复制或删除旧会话；它们只在组合提供 `sessionController` 时出现（Web profile 有，headless/ACP 可能没有），且永远只操作调用方自己的会话。
+- 有 `tools` 服务才注册工具；`list`/`detail` 只读。`new`/`fork` 还分别要求 `sessionController.create`/`fork`（headless/ACP 可能没有），只基于调用方会话新建或分叉，不修改或删除旧会话；查询工具可列出或查看其他会话。
 - 工具输出同时带 JSON 值（供脚本化使用）与经过裁剪的文本渲染（供人读）；详情后代过多时文本会注明截断。
 
 ## 安全边界
@@ -89,7 +89,7 @@ dsh plugin --profile <profile> remove dsh-session-butler
 - **其他进程持锁时同样拒绝**：写租约探测发现其他写入者时提示关闭占用进程。
 - **未加载的会话即时删除**：确认后移出会话库并立即清除，不留回收站记录。
 - **只删会话目录内的文件**：不触碰 `attachments`、其他插件数据或未知文件。
-- **删除确认后立即永久删除**：GUI 用确认对话框提示不可恢复；新宿主使用原生删除事务，旧宿主保留移动后立即 purge 的路径。级联从叶到根逐项提交；中途失败会明确报告已移除部分，不保证整棵树全部提交或全部撤销。CLI 的 `purge` 保留 `permanentDelete` 门禁与完整 id 输入。
+- **删除确认后立即永久删除**：GUI 用确认对话框提示不可恢复；Host 先同盘移入内部回收站，再逐项清除。移动失败会尽力回滚，清除中途失败可能留下部分条目供人工检查，不保证整棵树全部提交或全部撤销，也不提供用户可调用的恢复入口。
 - **fork 不属于血缘**，不会被级联删除。
 
 ## 兼容性

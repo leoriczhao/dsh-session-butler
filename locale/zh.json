@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "会话管家",
-    "description": "DeepSeek Harness 的会话管理插件：跨 workspace 浏览、筛选、查看详情、批量整理，并以回收站方式安全删除会话；同时提供只读 agent 工具。",
+    "description": "DeepSeek Harness 的会话管理插件：查看已归档聊天、取消归档与 GUI 删除；模型工具可列出、查看、新建和分叉会话。",
     "detail": "docs/usage.md"
   }
 }

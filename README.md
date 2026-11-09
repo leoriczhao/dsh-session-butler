@@ -41,6 +41,8 @@ dsh plugin --profile web add /path/to/dsh-session-butler
 | 设置 → **会话管家** | 插件配置，改完立即生效 |
 | 会话行 `...` → **删除会话** | 确认后永久删除该会话 |
 
+0.3.0 已移除 `/session-butler` 命令，不提供 CLI 回收站恢复或清理入口。取消归档只恢复侧栏显示，不能恢复已删除会话。
+
 ## 删除是怎么做的
 
 确认之后直接删，不留回收站页面。删除前会检查这个会话还能不能安全删：
@@ -51,22 +53,24 @@ dsh plugin --profile web add /path/to/dsh-session-butler
 
 级联删除只沿 subagent 走，普通 fork 及其子会话不会被带走；确认框里会写明这次会删几个子代理会话。
 
+Host 内部仍先同盘移入回收站，再立即清除；清除失败时可能留下条目供人工检查，这不构成用户可用的恢复功能。
+
 ## 配置
 
 设置 → 会话管家，四项：
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `trashRetentionDays` | `30` | 回收站条目的保留天数（CLI `trash`/`restore` 用），`0` 表示不按时间过期 |
+| `trashRetentionDays` | `30` | 内部回收站条目的过期标记天数，`0` 表示不标记过期；不会自动清理，也不延迟 GUI 删除 |
 | `liveSettleTimeoutMs` | `3000` | 等待宿主释放会话的毫秒上限，超时即拒绝 |
 | `cascadeSubagents` | `true` | 删除时是否连带子代理会话 |
 | `inlineMenuEnabled` | `true` | 是否在会话行菜单里显示「删除会话」 |
 
-配置文件里还有 `permanentDelete`，只用于 CLI 的 `purge`（需要输入完整 session id），GUI 删除不受它限制。
+配置文件里还保留 `permanentDelete`（默认 `disabled`）以兼容已有 profile patch；它只约束 Host 服务显式调用的 `purge()`，需设为 `confirm` 并匹配完整 session id。GUI 删除以确认对话框授权，不受该配置限制。
 
 ## 兼容性
 
-需要 DSH `>=0.2.1-rc.2 <0.3.0-0`（由顶层 `engines.dsh` 判定）。缺少 `workspaceRegistry`、`sessionTitle` 等服务的 headless / ACP 组合下，插件会降级而不是崩溃：命令和工具仍可用，设置页分区不出现。
+需要 DSH `>=0.2.1-rc.2 <0.3.0-0`（由顶层 `engines.dsh` 判定）。headless / ACP 组合下按可用服务降级：有 `tools` 才注册只读 `list`/`detail`；`new`/`fork` 还分别要求 `sessionController.create`/`fork`。没有 Web 服务时不挂 HTTP bridge，也不提供设置页或删除入口。
 
 ## 开发
 
@@ -78,10 +82,11 @@ pnpm run test:e2e     # 真实 dsh web 组合 + Playwright 浏览器
 
 产物两半：`lib/index.js`（Host，`apply(ctx, config)`）和 `lib/client.js`（Web Client，由宿主模块加载器注入）。
 
-发布走 tag，由 GitHub Actions 用 npm trusted publishing 发布并附 provenance：
+发布前更新 `package.json` 与更新记录，再推送对应的新 tag，由 GitHub Actions 用 npm trusted publishing 发布并附 provenance（已发布的版本和 tag 不重复使用）：
 
 ```sh
-git tag v0.2.3 && git push origin v0.2.3
+release_version=$(node -p "require('./package.json').version")
+git tag "v$release_version" && git push origin "v$release_version"
 ```
 
 ## 文档
