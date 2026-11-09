@@ -57,8 +57,8 @@ export const name = PLUGIN_ID
  * Host services this half cannot work without.
  *
  * All four are base-bundle services (audited against the rc.2 release). Optional
- * capabilities — `workspaceRegistry`, the tool registry, and the command
- * registry — are probed in `apply` instead.
+ * capabilities — `workspaceRegistry` and the tool registry — are probed in
+ * `apply` instead.
  */
 export const inject = ['sessionQuery', 'sessionPersistence', 'sessions', 'agents'] as const
 

@@ -43,6 +43,7 @@
 
 - 路径固定前缀 `/session-butler/api/<method>`，同源 POST，JSON 信封 `{ ok: true, value }` / `{ ok: false, error: { code, message } }`。
 - 只接受同源请求；没有 `webServer` 的 headless/ACP 组合不挂路由。
+- `trash`/`restore`/`purge`/`list-trash` 等服务与桥方法仍保留为内部能力；0.3.0 没有对应的 GUI/CLI 回收站入口，也不把它们注册为模型工具。GUI 删除走 `delete`/`delete-many`。
 - 错误码是稳定标识（`session-in-use`、`session-locked`、`trash-conflict`…），客户端按码选文案，不解析 message。
 
 ## 磁盘布局

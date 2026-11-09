@@ -7,7 +7,7 @@
  * dependencies. The read tools only read the Host read model; `session_butler_new`
  * and `session_butler_fork` fill the DSH tool-face gap for "conversation → new
  * conversation" without accepting arbitrary paths or session ids. Deletion stays
- * on the explicit Web UI and `/session-butler` surfaces (D-003).
+ * on the explicit Web UI; no deletion or trash-recovery tools are registered (D-034).
  *
  * @module dsh-session-butler/host/tools
  */

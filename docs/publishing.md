@@ -87,13 +87,13 @@ dsh --profile tl-dev --dump-config | grep -A3 'session-butler'
 - Host 无 `FAILED` fiber；插件行 title/description/icon 正确（中英文各看一次）；
 - 浏览器控制台无 `client bundle not found` / `missed the module table` / `loaded without registering`；
 - 插件详情页显示 `docs/usage.md`（`meta.detail`）；
-- MVP 功能冒烟：列表、筛选、详情、trash → restore（隔离 `DSH_HOME`，见下）、运行中拒绝、子代理级联计数；`purge` 需显式开启配置后再测；
+- 当前功能冒烟（隔离 `DSH_HOME`，见下）：归档列表、搜索、取消归档、行菜单删除、已归档页永久删除/全部删除、已加载或运行中拒绝、子代理级联计数；成功删除后会话目录与内部回收站均无残留。内部 trash/restore/purge 由单元测试覆盖，没有 GUI/CLI 回收站入口；
 - 卸载回归：`dsh plugin --profile tl-dev remove dsh-session-butler`，确认行消失、无残留；删除临时 profile 与隔离 home。
 
 > 注意：同一个包不能同时以 link 和 registry 两种形态被两个 loader source 解析，否则 Client 组合报 `resolves from multiple active Loader sources`。测试前确认临时 profile 里没有旧安装。
 
 **写入类冒烟必须隔离 `DSH_HOME`。** profile 只隔离插件配置/依赖，真实会话仍存放在
-`$DSH_HOME/sessions`；在默认 home 里点击“移入回收站/恢复”会改到日常会话。发布前用
+`$DSH_HOME/sessions`；在默认 home 里点击“删除会话/永久删除/全部删除”会改到日常会话。发布前用
 一次性 home 跑完整闭环：
 
 ```bash
@@ -108,6 +108,8 @@ dsh --profile tl-iso --no-open --port 3109
 ```
 
 ### 阶段 C 实测记录（2026-10-28）
+
+以下是 0.1.x 历史界面的实测记录，回收站与恢复入口已被 D-030/D-034 取代；当前验证步骤见上文及 [testing.md](./testing.md)。
 
 环境：DSH `0.2.1-rc.3-22ddee3`，隔离 `DSH_HOME=/tmp/tl-m4/home`，profile
 `tl-iso`，插件以绝对路径 link 安装，端口 3109，Playwright Chromium 无头。
@@ -162,18 +164,16 @@ git tag v<version> && git push origin v<version>
 
 ## 阶段 D2：从 GitHub Actions 发布（推荐）
 
-本机发布需要账号 2FA；CI 发布不需要人工输入动态码。推送与 `package.json` 版本一致的 tag 即触发 `.github/workflows/release.yml`：
+本机发布需要账号 2FA；CI 发布不需要人工输入动态码。更新 `package.json` 与更新记录后，推送对应的新 tag 即触发 `.github/workflows/release.yml`（已发布的版本和 tag 不重复使用）：
 
 ```bash
-git tag v0.3.0 && git push origin v0.3.0
+release_version=$(node -p "require('./package.json').version")
+git tag "v$release_version" && git push origin "v$release_version"
 ```
 
-两种凭据方式，二选一：
+当前工作流使用 **Trusted publishing（无需密钥）**：在 npmjs.com → 包 → Settings → Trusted publishing 配置本仓库与工作流文件名（`release.yml`）。工作流用 OIDC 自动认证，不读取 `NPM_TOKEN`。
 
-1. **Trusted publishing（无需密钥）**：在 npmjs.com → 包 → Settings → Trusted publishing 添加本仓库与工作流文件名（`release.yml`）。之后工作流用 OIDC 自动认证，不再需要 `NPM_TOKEN`。
-2. **NPM_TOKEN secret**：在 npmjs.com 创建 Automation（或 Granular，勾选 read/write 且允许 bypass 2FA）token，写入仓库 Secrets `NPM_TOKEN`。工作流已读取该 secret。
-
-工作流会先校验 tag 与版本一致、跑 `pnpm run verify`，再用 `npm publish --provenance` 发布（`id-token: write` 已声明）。首次使用前请确认包已存在且当前账号是 maintainer。`0.2.2` 是首个按此流程发布的版本：tag `v0.2.2` 的发布 run 已通过 OIDC 认证，仅因该版本已由本地发布而停在重复版本检查。
+工作流会先校验 tag 与版本一致、跑 `pnpm run verify`，再用 `npm publish --access public --provenance` 发布（`id-token: write` 已声明）。首次使用前请确认包已存在且当前账号是 maintainer。`0.2.2` 是首个按此流程发布的版本：tag `v0.2.2` 的发布 run 已通过 OIDC 认证，仅因该版本已由本地发布而停在重复版本检查。
 
 ## 阶段 E：从 registry 全新安装验证
 
